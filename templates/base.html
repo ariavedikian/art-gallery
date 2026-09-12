@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Tells mobile browsers to use the real device width instead of pretending
+       to be a 980px desktop and zooming out. Without this, responsive CSS does
+       nothing on a phone. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>{% block title %}{{ gallery_name }}{% endblock %}</title>
+
+  <!-- url_for('static', ...) builds the correct URL to a file in static/.
+       Never hardcode "/static/css/style.css" — if the path ever changes,
+       url_for keeps working and a hardcoded string silently breaks. -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+  <!-- Lets keyboard users jump straight past the nav to the content. -->
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="wordmark" href="{{ url_for('home') }}">{{ gallery_name }}</a>
+
+      <nav aria-label="Main">
+        <ul class="nav">
+          <li><a href="{{ url_for('home') }}">Gallery</a></li>
+          {# `| default([])` keeps the nav from crashing on a page that does not
+             pass `artists`. The proper fix is a context processor, Stage 4. #}
+          {% for artist in artists | default([]) %}
+            <li><a href="#{{ artist.slug }}">{{ artist.name }}</a></li>
+          {% endfor %}
+          <li><a href="{{ url_for('about') }}">About</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container site-footer__inner">
+      <p class="wordmark wordmark--small">{{ gallery_name }}</p>
+      <p class="muted">Placeholder footer text. All content on this site is
+         placeholder content used during development.</p>
+    </div>
+  </footer>
+
+</body>
+</html>

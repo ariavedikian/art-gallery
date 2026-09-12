@@ -1,0 +1,333 @@
+/* =============================================================================
+   Art Gallery — stylesheet
+   Museum-inspired: quiet palette, generous space, typography does the work.
+   Organised top to bottom: tokens -> reset -> layout -> components.
+   ========================================================================== */
+
+/* --- 1. Design tokens -------------------------------------------------------
+   CSS custom properties: named values defined once and reused everywhere.
+   Change --ink here and every piece of text that uses it updates at once.
+   :root is the <html> element, so these are available site-wide. */
+
+:root {
+  /* Palette — warm neutrals, one restrained accent. */
+  --paper:      #faf8f5;
+  --paper-warm: #f2eee8;
+  --ink:        #17140f;
+  --ink-soft:   #6b6459;
+  --line:       #e3ddd4;
+  --accent:     #7a2f24;
+
+  /* Type. A serif for reading and display, a sans for small interface text. */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-sans:  system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+
+  /* A spacing scale. Picking from a fixed set instead of inventing numbers
+     is what makes a layout feel deliberate rather than accidental. */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2.5rem;
+  --space-5: 4rem;
+  --space-6: 6rem;
+
+  --measure: 68ch;   /* comfortable maximum line length for body text */
+}
+
+/* --- 2. Reset ---------------------------------------------------------------
+   Browsers ship default margins and sizing that fight your layout.
+   These few rules level the field. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body, h1, h2, h3, p, figure, ul {
+  margin: 0;
+  padding: 0;
+}
+
+ul { list-style: none; }
+
+img {
+  display: block;      /* removes the stray gap under inline images */
+  max-width: 100%;     /* never overflow the container */
+  height: auto;        /* keep the aspect ratio when width shrinks */
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+
+/* A single visible focus style for every keyboard-focusable element.
+   Never remove focus outlines without replacing them. */
+a:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* --- 3. Layout primitives --------------------------------------------------- */
+
+/* One shared width constraint. Everything lines up because everything
+   sits inside the same container. */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: var(--space-3);
+}
+
+.section { padding-block: var(--space-6); }
+
+.section--tinted {
+  background: var(--paper-warm);
+  border-block: 1px solid var(--line);
+}
+
+.prose { max-width: var(--measure); }
+.prose p + p { margin-top: var(--space-2); }
+
+/* --- 4. Typography ---------------------------------------------------------- */
+
+.display {
+  font-size: clamp(2.25rem, 5vw, 3.75rem);  /* fluid: scales with the viewport,
+                                               clamped so it never gets silly */
+  line-height: 1.08;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.section-title {
+  font-size: 0.8125rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-4);
+}
+
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--space-2);
+}
+
+.lead { font-size: 1.1875rem; color: var(--ink-soft); max-width: 46ch; }
+.muted { color: var(--ink-soft); }
+.small { font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.5; }
+
+/* --- 5. Header and navigation ----------------------------------------------- */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;               /* off-screen until focused by the Tab key */
+}
+.skip-link:focus {
+  left: var(--space-3);
+  top: var(--space-2);
+  z-index: 10;
+  background: var(--ink);
+  color: var(--paper);
+  padding: var(--space-1) var(--space-2);
+}
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+/* Flexbox: lay children out in a row. Perfect for a nav bar — a handful of
+   items sized by their content, pushed apart. */
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.wordmark--small { font-size: 1rem; }
+
+.nav {
+  display: flex;
+  gap: var(--space-3);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nav a {
+  text-decoration: none;
+  color: var(--ink-soft);
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* --- 6. Hero ---------------------------------------------------------------- */
+
+.hero { padding-block: var(--space-6) var(--space-5); }
+
+/* CSS Grid: define the whole two-dimensional layout up front.
+   1.1fr / 1fr means the text column gets a slightly larger share of the
+   leftover space than the image column. */
+.hero__inner {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.hero__text > * + * { margin-top: var(--space-3); }
+
+.hero__figure img { width: 100%; }
+
+/* --- 7. Buttons ------------------------------------------------------------- */
+
+.button {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0.9em 1.6em;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.button:hover { background: transparent; color: var(--ink); }
+
+.button--quiet { background: transparent; color: var(--ink); }
+.button--quiet:hover { background: var(--ink); color: var(--paper); }
+
+.button--disabled {
+  opacity: 0.4;
+  pointer-events: none;   /* placeholder until the route exists (Stage 4) */
+}
+
+/* --- 8. Artist cards -------------------------------------------------------- */
+
+/* auto-fit + minmax: fit as many columns as will hold at least 22rem, then
+   share the remaining space equally. The layout reflows by itself — no
+   media query needed for this one. */
+.artist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: var(--space-5);
+}
+
+.artist-card { display: grid; gap: var(--space-3); }
+
+.artist-card__portrait {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  max-height: 26rem;    /* on a wide screen a 4:5 portrait would otherwise be
+                           taller than the viewport and bury the text */
+  object-fit: cover;    /* fill the box, crop the overflow, never distort */
+}
+
+.artist-card__body > * + * { margin-top: var(--space-2); }
+.artist-card__name { font-size: 1.5rem; font-weight: 400; }
+
+/* --- 9. Artwork grid -------------------------------------------------------- */
+
+.artwork-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--space-5) var(--space-4);
+}
+
+.artwork__figure {
+  background: var(--paper);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+}
+
+.artwork__figure img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+}
+
+.artwork__meta { margin-top: var(--space-2); }
+.artwork__title { font-size: 1.1875rem; font-weight: 400; }
+.artwork__price { margin-top: var(--space-1); font-size: 1rem; }
+
+.tag {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2em 0.6em;
+  border: 1px solid currentColor;
+  margin-left: var(--space-1);
+  white-space: nowrap;
+}
+
+.tag--available { color: var(--ink-soft); }
+.tag--sold { color: var(--accent); }
+
+/* --- 10. Footer ------------------------------------------------------------- */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding-block: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.site-footer__inner > * + * { margin-top: var(--space-1); }
+.site-footer .muted { font-size: 0.875rem; max-width: var(--measure); }
+
+/* --- 11. Responsive --------------------------------------------------------- */
+
+/* A media query applies rules only when a condition is true. Below 800px the
+   two hero columns collapse into one — side-by-side stops working on a phone. */
+@media (max-width: 800px) {
+  :root {
+    --space-5: 3rem;
+    --space-6: 4rem;
+  }
+
+  .hero__inner {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .site-header__inner {
+    gap: var(--space-2);
+  }
+}
+
+/* Respect a reader who has asked their system to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
+
+{% block content %}
+
+  <!-- HERO ------------------------------------------------------------- -->
+  <section class="hero">
+    <div class="container hero__inner">
+      <div class="hero__text">
+        <p class="eyebrow">Placeholder Collection</p>
+        <h1 class="display">Placeholder headline for the gallery.</h1>
+        <p class="lead">Placeholder introduction. Two or three lines describing
+          the gallery and the work it represents.</p>
+        <a class="button" href="#collections">View the collections</a>
+      </div>
+      <figure class="hero__figure">
+        <img src="{{ url_for('static', filename='images/placeholders/hero.svg') }}"
+             alt="Placeholder hero image" width="1600" height="900">
+      </figure>
+    </div>
+  </section>
+
+  <!-- INTRODUCTION ------------------------------------------------------ -->
+  <section class="section">
+    <div class="container prose">
+      <h2 class="section-title">About the gallery</h2>
+      <p>Placeholder paragraph about the gallery. This text exists so the
+         layout, spacing, and typography can be judged before any real
+         content is written.</p>
+      <p>Placeholder paragraph two. Replaced with verified material at a later
+         stage of the project.</p>
+    </div>
+  </section>
+
+  <!-- ARTISTS ----------------------------------------------------------- -->
+  <section class="section" id="collections">
+    <div class="container">
+      <h2 class="section-title">The artists</h2>
+
+      <div class="artist-grid">
+        {% for artist in artists %}
+          <article class="artist-card" id="{{ artist.slug }}">
+            <img class="artist-card__portrait"
+                 src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
+                 alt="Placeholder portrait of {{ artist.name }}"
+                 width="800" height="1000" loading="lazy">
+            <div class="artist-card__body">
+              <h3 class="artist-card__name">{{ artist.name }}</h3>
+              <p class="muted small">{{ artist.lifespan }}</p>
+              <p>{{ artist.summary }}</p>
+              <!-- Not a real link yet: the artist route arrives at Stage 4. -->
+              <span class="button button--quiet button--disabled"
+                    aria-disabled="true">View collection</span>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURED ARTWORK -------------------------------------------------- -->
+  <section class="section section--tinted">
+    <div class="container">
+      <h2 class="section-title">Featured works</h2>
+
+      <ul class="artwork-grid">
+        {% for art in featured %}
+          <li class="artwork">
+            <figure class="artwork__figure">
+              <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
+                   alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
+                   loading="lazy">
+            </figure>
+            <div class="artwork__meta">
+              <h3 class="artwork__title">{{ art.title }}</h3>
+              <p class="muted small">{{ art.artist_name }} · {{ art.year }}</p>
+              <p class="muted small">{{ art.medium }}</p>
+              <p class="artwork__price">
+                {{ art.price_cents | usd }}
+                {% if art.available %}
+                  <span class="tag tag--available">Available</span>
+                {% else %}
+                  <span class="tag tag--sold">Sold</span>
+                {% endif %}
+              </p>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+{% endblock %}

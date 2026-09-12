@@ -88,7 +88,7 @@ Status: `[x]` done · `[ ]` not started
 
 - [x] **1 — Environment & Flask basics.** venv, requirements.txt, first routes,
       request/response cycle, localhost, status codes.
-- [ ] **2 — Basic website.** Jinja templates, `render_template`, template
+- [x] **2 — Basic website.** Jinja templates, `render_template`, template
       inheritance, static files, semantic HTML, CSS fundamentals, the homepage
       (nav, hero, intro, two artist sections, featured works, footer).
 - [ ] **3 — Gallery design.** Elevate the landing page: artist cards, featured

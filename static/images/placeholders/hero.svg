@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="PLACEHOLDER placeholder">
+  <rect width="1600" height="900" fill="#D9D2C7"/>
+  <rect x="0" y="560" width="1600" height="340" fill="#C4BBAD" opacity="1"/>
+  <rect x="180" y="190" width="420" height="520" fill="#B9AE9C" opacity="1"/>
+  <rect x="980" y="280" width="460" height="430" fill="#CFC6B8" opacity="1"/>
+  <rect x="6" y="6" width="1588" height="888" fill="none" stroke="#00000018" stroke-width="2"/>
+  <text x="800" y="450" text-anchor="middle" font-family="Georgia, serif" font-size="40" fill="#00000055" letter-spacing="4.8">PLACEHOLDER</text>
+  <text x="800" y="526" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#00000040" letter-spacing="4.3">HERO IMAGE</text>
+</svg>

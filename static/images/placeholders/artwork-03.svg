@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 1050" width="850" height="1050" role="img" aria-label="PLACEHOLDER placeholder">
+  <rect width="850" height="1050" fill="#C9C0C4"/>
+  <rect x="130" y="180" width="590" height="690" fill="#B3A8AE" opacity="1"/>
+  <rect x="280" y="420" width="290" height="250" fill="#9E9299" opacity="1"/>
+  <rect x="6" y="6" width="838" height="1038" fill="none" stroke="#00000018" stroke-width="2"/>
+  <text x="425" y="525" text-anchor="middle" font-family="Georgia, serif" font-size="38" fill="#00000055" letter-spacing="4.6">PLACEHOLDER</text>
+  <text x="425" y="597" text-anchor="middle" font-family="Georgia, serif" font-size="23" fill="#00000040" letter-spacing="4.1">ARTWORK THREE</text>
+</svg>
