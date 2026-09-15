@@ -2,6 +2,23 @@
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
 
+{#
+  A macro is a reusable piece of template: a function that returns HTML.
+  Price and availability appear twice on this page and will appear again on
+  the artist and artwork pages, so the rule is written exactly once.
+  At Stage 4 it moves into its own file so every template can import it.
+#}
+{% macro price_status(art) %}
+  <p class="price">
+    {% if art.available %}
+      <span class="price__amount">{{ art.price_cents | usd }}</span>
+      <span class="tag">Available</span>
+    {% else %}
+      <span class="tag tag--sold">Sold</span>
+    {% endif %}
+  </p>
+{% endmacro %}
+
 {% block content %}
 
   <!-- HERO ------------------------------------------------------------- -->
@@ -15,16 +32,19 @@
         <a class="button" href="#collections">View the collections</a>
       </div>
       <figure class="hero__figure">
+        {# Visible the instant the page opens, so it must NOT be lazy-loaded.
+           fetchpriority asks the browser to fetch it before other images. #}
         <img src="{{ url_for('static', filename='images/placeholders/hero.svg') }}"
-             alt="Placeholder hero image" width="1600" height="900">
+             alt="Placeholder hero image" width="1600" height="900"
+             fetchpriority="high">
       </figure>
     </div>
   </section>
 
   <!-- INTRODUCTION ------------------------------------------------------ -->
-  <section class="section">
+  <section class="section" aria-labelledby="about-heading">
     <div class="container prose">
-      <h2 class="section-title">About the gallery</h2>
+      <h2 class="section-title" id="about-heading">About the gallery</h2>
       <p>Placeholder paragraph about the gallery. This text exists so the
          layout, spacing, and typography can be judged before any real
          content is written.</p>
@@ -34,58 +54,97 @@
   </section>
 
   <!-- ARTISTS ----------------------------------------------------------- -->
-  <section class="section" id="collections">
+  <section class="section" id="collections" aria-labelledby="artists-heading">
     <div class="container">
-      <h2 class="section-title">The artists</h2>
+      <h2 class="section-title" id="artists-heading">The artists</h2>
 
-      <div class="artist-grid">
-        {% for artist in artists %}
-          <article class="artist-card" id="{{ artist.slug }}">
-            <img class="artist-card__portrait"
-                 src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
+      {% for artist in artists %}
+        {# TEMPORARY hardcoded URL. No artist route exists yet, so url_for()
+           would crash the page. This link 404s until Stage 4 replaces it with
+           url_for('artist_page', slug=artist.slug). #}
+        {% set collection_url = "/artists/" ~ artist.slug %}
+
+        <article class="feature" id="{{ artist.slug }}">
+          {# A second link to the same place, so mouse users can click the
+             image. tabindex="-1" and aria-hidden keep it out of keyboard and
+             screen-reader navigation: they meet one link per artist, not two. #}
+          <a class="feature__media" href="{{ collection_url }}"
+             tabindex="-1" aria-hidden="true">
+            <img src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
                  alt="Placeholder portrait of {{ artist.name }}"
                  width="800" height="1000" loading="lazy">
-            <div class="artist-card__body">
-              <h3 class="artist-card__name">{{ artist.name }}</h3>
-              <p class="muted small">{{ artist.lifespan }}</p>
-              <p>{{ artist.summary }}</p>
-              <!-- Not a real link yet: the artist route arrives at Stage 4. -->
-              <span class="button button--quiet button--disabled"
-                    aria-disabled="true">View collection</span>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
+          </a>
+
+          <div class="feature__body">
+            <p class="eyebrow">{{ "%02d" | format(loop.index) }}</p>
+            <h3 class="heading">{{ artist.name }}</h3>
+            <p class="muted small">{{ artist.lifespan }}</p>
+            <p>{{ artist.summary }}</p>
+            <a class="button button--quiet" href="{{ collection_url }}">
+              View collection<span class="visually-hidden">: {{ artist.name }}</span>
+            </a>
+          </div>
+        </article>
+      {% endfor %}
     </div>
   </section>
 
-  <!-- FEATURED ARTWORK -------------------------------------------------- -->
-  <section class="section section--tinted">
+  <!-- SPOTLIGHT: one selected work, shown large ------------------------- -->
+  {% if spotlight %}
+  <section class="section section--tinted" aria-labelledby="spotlight-heading">
     <div class="container">
-      <h2 class="section-title">Featured works</h2>
+      <h2 class="section-title" id="spotlight-heading">Selected work</h2>
+
+      <div class="spotlight">
+        <figure class="mat spotlight__figure">
+          <img src="{{ url_for('static', filename='images/' ~ spotlight.image) }}"
+               alt="Placeholder image of {{ spotlight.title }} by {{ spotlight.artist_name }}"
+               width="{{ spotlight.image_width }}" height="{{ spotlight.image_height }}"
+               loading="lazy">
+        </figure>
+
+        <div class="spotlight__body">
+          <h3 class="heading work-title">{{ spotlight.title }}</h3>
+
+          {# <dl> is a description list: the semantic element for label/value
+             pairs. Screen readers announce them as pairs, not loose text. #}
+          <dl class="details">
+            <div><dt>Artist</dt><dd>{{ spotlight.artist_name }}</dd></div>
+            <div><dt>Date</dt><dd>{{ spotlight.year }}</dd></div>
+            <div><dt>Medium</dt><dd>{{ spotlight.medium }}</dd></div>
+          </dl>
+
+          {{ price_status(spotlight) }}
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- FEATURED WORKS ---------------------------------------------------- -->
+  <section class="section" aria-labelledby="featured-heading">
+    <div class="container">
+      <h2 class="section-title" id="featured-heading">Featured works</h2>
 
       <ul class="artwork-grid">
         {% for art in featured %}
           <li class="artwork">
-            <figure class="artwork__figure">
+            <figure class="mat mat--fixed">
               <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
                    alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
+                   width="{{ art.image_width }}" height="{{ art.image_height }}"
                    loading="lazy">
             </figure>
             <div class="artwork__meta">
-              <h3 class="artwork__title">{{ art.title }}</h3>
-              <p class="muted small">{{ art.artist_name }} · {{ art.year }}</p>
+              <h3 class="artwork__title work-title">{{ art.title }}</h3>
+              <p class="muted small">{{ art.artist_name }}, {{ art.year }}</p>
               <p class="muted small">{{ art.medium }}</p>
-              <p class="artwork__price">
-                {{ art.price_cents | usd }}
-                {% if art.available %}
-                  <span class="tag tag--available">Available</span>
-                {% else %}
-                  <span class="tag tag--sold">Sold</span>
-                {% endif %}
-              </p>
+              {{ price_status(art) }}
             </div>
           </li>
+        {% else %}
+          {# for/else: the else branch runs only when the list is empty. #}
+          <li class="muted">No featured works yet.</li>
         {% endfor %}
       </ul>
     </div>

@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 2: the homepage, rendered from HTML templates.
+Stage 3: the homepage becomes a gallery landing page.
 
 The placeholder data below lives in this file *temporarily*. At Stage 5 it moves
 into SQLite and this file will query the database instead. The shape of each
@@ -38,7 +38,9 @@ ARTISTS = [
     },
 ]
 
-FEATURED_ARTWORKS = [
+# image_width / image_height are the image's real pixel dimensions. The browser
+# uses them to reserve the right amount of space before the file has loaded.
+ARTWORKS = [
     {
         "id": 1,
         "title": "Artwork Title",
@@ -47,7 +49,10 @@ FEATURED_ARTWORKS = [
         "medium": "Oil on Canvas",
         "price_cents": 480000,
         "available": True,
+        "is_featured": True,
         "image": "placeholders/artwork-01.svg",
+        "image_width": 900,
+        "image_height": 1100,
     },
     {
         "id": 2,
@@ -57,7 +62,10 @@ FEATURED_ARTWORKS = [
         "medium": "Lithograph",
         "price_cents": 125000,
         "available": True,
+        "is_featured": True,
         "image": "placeholders/artwork-02.svg",
+        "image_width": 1000,
+        "image_height": 800,
     },
     {
         "id": 3,
@@ -67,7 +75,49 @@ FEATURED_ARTWORKS = [
         "medium": "Ink on Paper",
         "price_cents": 96000,
         "available": False,
+        "is_featured": True,
         "image": "placeholders/artwork-03.svg",
+        "image_width": 850,
+        "image_height": 1050,
+    },
+    {
+        "id": 4,
+        "title": "Artwork Title",
+        "artist_name": "Artist Two",
+        "year": "2025",
+        "medium": "Gouache on Paper",
+        "price_cents": 210000,
+        "available": True,
+        "is_featured": True,
+        "image": "placeholders/artwork-04.svg",
+        "image_width": 700,
+        "image_height": 1200,
+    },
+    {
+        "id": 5,
+        "title": "Artwork Title",
+        "artist_name": "Artist One",
+        "year": "2025",
+        "medium": "Oil on Canvas",
+        "price_cents": 640000,
+        "available": True,
+        "is_featured": True,
+        "image": "placeholders/artwork-05.svg",
+        "image_width": 1300,
+        "image_height": 800,
+    },
+    {
+        "id": 6,
+        "title": "Artwork Title",
+        "artist_name": "Artist Two",
+        "year": "2025",
+        "medium": "Etching",
+        "price_cents": 58000,
+        "available": True,
+        "is_featured": False,
+        "image": "placeholders/artwork-06.svg",
+        "image_width": 1000,
+        "image_height": 1000,
     },
 ]
 
@@ -86,13 +136,21 @@ def usd(cents):
 
 @app.route("/")
 def home():
-    # render_template finds the file in templates/, fills in the values we pass
-    # as keyword arguments, and returns the finished HTML as the response.
+    # Python decides WHAT to show. The template only decides how it looks.
+    # At Stage 6 this list comprehension becomes: WHERE is_featured = 1
+    featured = [art for art in ARTWORKS if art["is_featured"]]
+
+    # The first featured work gets the large spotlight; the rest fill the grid.
+    # Guard against an empty list: featured[0] on [] would raise IndexError
+    # and turn the whole homepage into a 500 error.
+    spotlight = featured[0] if featured else None
+
     return render_template(
         "index.html",
         gallery_name=GALLERY_NAME,
         artists=ARTISTS,
-        featured=FEATURED_ARTWORKS,
+        spotlight=spotlight,
+        featured=featured[1:],
     )
 
 
@@ -103,7 +161,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 2}
+    return {"status": "ok", "stage": 3}
 
 
 if __name__ == "__main__":

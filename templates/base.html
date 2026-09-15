@@ -9,6 +9,15 @@
 
   <title>{% block title %}{{ gallery_name }}{% endblock %}</title>
 
+  <!-- Web fonts, served by Google Fonts.
+       preconnect opens the network connection early, before the stylesheet
+       has even asked for the font files, which saves a round trip.
+       display=swap shows fallback text immediately and swaps the real font in
+       when it arrives, so text is never invisible while fonts load. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500&display=swap">
+
   <!-- url_for('static', ...) builds the correct URL to a file in static/.
        Never hardcode "/static/css/style.css" — if the path ever changes,
        url_for keeps working and a hardcoded string silently breaks. -->

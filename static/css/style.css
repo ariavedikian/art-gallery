@@ -1,7 +1,7 @@
 /* =============================================================================
    Art Gallery — stylesheet
    Museum-inspired: quiet palette, generous space, typography does the work.
-   Organised top to bottom: tokens -> reset -> layout -> components.
+   Organised top to bottom: tokens -> reset -> layout -> type -> components.
    ========================================================================== */
 
 /* --- 1. Design tokens -------------------------------------------------------
@@ -10,7 +10,8 @@
    :root is the <html> element, so these are available site-wide. */
 
 :root {
-  /* Palette — warm neutrals, one restrained accent. */
+  /* Palette — warm neutrals, one restrained accent.
+     Every text colour here meets WCAG AA contrast against both backgrounds. */
   --paper:      #faf8f5;
   --paper-warm: #f2eee8;
   --ink:        #17140f;
@@ -18,9 +19,12 @@
   --line:       #e3ddd4;
   --accent:     #7a2f24;
 
-  /* Type. A serif for reading and display, a sans for small interface text. */
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --font-sans:  system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* Two typefaces, two jobs. Cormorant Garamond is a display face: beautiful
+     when large, too delicate when small, so it is only used at heading sizes.
+     Inter is designed for screens and carries everything read at length.
+     Every name after the first is a fallback, used if the web font fails. */
+  --font-display: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-text:    "Inter", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
 
   /* A spacing scale. Picking from a fixed set instead of inventing numbers
      is what makes a layout feel deliberate rather than accidental. */
@@ -32,6 +36,9 @@
   --space-6: 6rem;
 
   --measure: 68ch;   /* comfortable maximum line length for body text */
+
+  /* One easing curve for every transition: starts quick, settles gently. */
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 
 /* --- 2. Reset ---------------------------------------------------------------
@@ -40,7 +47,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-body, h1, h2, h3, p, figure, ul {
+body, h1, h2, h3, p, figure, ul, dl, dd {
   margin: 0;
   padding: 0;
 }
@@ -56,8 +63,8 @@ img {
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-serif);
-  font-size: 1.0625rem;
+  font-family: var(--font-text);
+  font-size: 1rem;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
@@ -70,6 +77,21 @@ a:focus-visible,
 .button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+/* Hidden on screen but still read aloud by screen readers. Used to give
+   repeated link text like "View collection" a unique accessible name.
+   (display: none would hide it from screen readers too.) */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* --- 3. Layout primitives --------------------------------------------------- */
@@ -96,38 +118,56 @@ a:focus-visible,
 /* --- 4. Typography ---------------------------------------------------------- */
 
 .display {
-  font-size: clamp(2.25rem, 5vw, 3.75rem);  /* fluid: scales with the viewport,
+  font-family: var(--font-display);
+  font-size: clamp(2.75rem, 6vw, 4.75rem);  /* fluid: scales with the viewport,
                                                clamped so it never gets silly */
-  line-height: 1.08;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
   text-wrap: balance;
 }
 
+/* Reusable large heading: artist names, the spotlight title. */
+.heading {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.6vw, 2.875rem);
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+/* Artwork titles are italic. That is the standard convention in writing
+   about art, the same way book titles are italicised. */
+.work-title { font-style: italic; }
+
 .section-title {
-  font-size: 0.8125rem;
-  font-family: var(--font-sans);
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-soft);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--line);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .eyebrow {
-  font-family: var(--font-sans);
   font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: var(--space-2);
 }
 
-.lead { font-size: 1.1875rem; color: var(--ink-soft); max-width: 46ch; }
+.lead {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  line-height: 1.45;
+  color: var(--ink-soft);
+  max-width: 40ch;
+}
+
 .muted { color: var(--ink-soft); }
-.small { font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.5; }
+.small { font-size: 0.8125rem; line-height: 1.5; }
 
 /* --- 5. Header and navigation ----------------------------------------------- */
 
@@ -161,19 +201,22 @@ a:focus-visible,
 }
 
 .wordmark {
-  font-size: 1.25rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   text-decoration: none;
 }
 
-.wordmark--small { font-size: 1rem; }
+.wordmark--small { font-size: 0.9375rem; }
 
 .nav {
   display: flex;
-  gap: var(--space-3);
-  font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  letter-spacing: 0.08em;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -182,7 +225,7 @@ a:focus-visible,
   color: var(--ink-soft);
   padding-bottom: 2px;
   border-bottom: 1px solid transparent;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
 .nav a:hover {
@@ -212,16 +255,16 @@ a:focus-visible,
 
 .button {
   display: inline-block;
-  font-family: var(--font-sans);
   font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   text-decoration: none;
-  padding: 0.9em 1.6em;
+  padding: 0.95em 1.7em;
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.25s var(--ease), color 0.25s var(--ease);
 }
 
 .button:hover { background: transparent; color: var(--ink); }
@@ -229,102 +272,188 @@ a:focus-visible,
 .button--quiet { background: transparent; color: var(--ink); }
 .button--quiet:hover { background: var(--ink); color: var(--paper); }
 
-.button--disabled {
-  opacity: 0.4;
-  pointer-events: none;   /* placeholder until the route exists (Stage 4) */
+/* --- 8. Mat: the reusable frame for every artwork ---------------------------
+   A gallery never crops a painting. object-fit: contain scales the whole
+   image to fit inside its box; any leftover space shows the mat colour.
+   (Compare the artist portraits below, which use cover. Cropping a photo of
+   a person is fine. Cropping an artwork misrepresents it.) */
+
+.mat {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: var(--space-3);
 }
 
-/* --- 8. Artist cards -------------------------------------------------------- */
+.mat img {
+  width: 100%;
+  object-fit: contain;
+}
 
-/* auto-fit + minmax: fit as many columns as will hold at least 22rem, then
-   share the remaining space equally. The layout reflows by itself — no
-   media query needed for this one. */
-.artist-grid {
+/* Grid variant: every mat has the same shape so rows line up neatly,
+   whatever the proportions of the artwork inside. */
+.mat--fixed img { aspect-ratio: 4 / 5; }
+
+/* --- 9. Feature: large alternating image + text block (artists) ------------- */
+
+.feature {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  grid-template-columns: 6fr 5fr;
   gap: var(--space-5);
+  align-items: center;
 }
 
-.artist-card { display: grid; gap: var(--space-3); }
+.feature + .feature { margin-top: var(--space-6); }
 
-.artist-card__portrait {
+/* Mirror every second feature. This is purely visual, so it belongs in CSS,
+   not in a Jinja if-statement. `order` changes the visual position only; the
+   HTML order, which screen readers and the Tab key follow, stays the same. */
+.feature:nth-of-type(even) { grid-template-columns: 5fr 6fr; }
+.feature:nth-of-type(even) .feature__media { order: 2; }
+
+.feature__media {
+  display: block;
+  overflow: hidden;              /* clip the image as it scales on hover */
+}
+
+.feature__media img {
   width: 100%;
   aspect-ratio: 4 / 5;
-  max-height: 26rem;    /* on a wide screen a 4:5 portrait would otherwise be
-                           taller than the viewport and bury the text */
-  object-fit: cover;    /* fill the box, crop the overflow, never distort */
+  max-height: 38rem;
+  object-fit: cover;             /* a portrait may be cropped; an artwork may not */
+  transition: transform 0.8s var(--ease);
 }
 
-.artist-card__body > * + * { margin-top: var(--space-2); }
-.artist-card__name { font-size: 1.5rem; font-weight: 400; }
+/* Hover only on things you can actually click. A hover effect is a promise
+   that something is interactive, so the artwork cards get none until they
+   become links at Stage 8. */
+.feature__media:hover img { transform: scale(1.03); }
 
-/* --- 9. Artwork grid -------------------------------------------------------- */
+.feature__body > * + * { margin-top: var(--space-2); }
+.feature__body .heading { margin-top: var(--space-1); }
+.feature__body .button { margin-top: var(--space-3); }
 
+/* --- 10. Spotlight: one selected work, large -------------------------------- */
+
+.spotlight {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.spotlight__figure { padding: var(--space-4); }
+
+.spotlight__figure img { max-height: 70vh; }
+
+/* Label/value rows: a two-column grid inside each row. */
+.details {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.details > div {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: var(--space-2);
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.details dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-top: 0.2em;
+}
+
+.spotlight .price {
+  margin-top: var(--space-4);
+  font-size: 1.25rem;
+}
+
+/* --- 11. Artwork grid ------------------------------------------------------- */
+
+/* auto-fit + minmax: fit as many columns as will hold at least 15rem, then
+   share the remaining space equally. Four across on a laptop, two on a
+   tablet, one on a phone — with no media query at all. */
 .artwork-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: var(--space-5) var(--space-4);
 }
 
-.artwork__figure {
-  background: var(--paper);
-  padding: var(--space-2);
-  border: 1px solid var(--line);
-}
-
-.artwork__figure img {
-  width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
-}
-
 .artwork__meta { margin-top: var(--space-2); }
-.artwork__title { font-size: 1.1875rem; font-weight: 400; }
-.artwork__price { margin-top: var(--space-1); font-size: 1rem; }
+
+.artwork__title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+
+/* --- 12. Price and availability --------------------------------------------- */
+
+.price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Tabular figures: every digit the same width, so prices align. */
+.price__amount { font-variant-numeric: tabular-nums; }
 
 .tag {
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  letter-spacing: 0.1em;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  padding: 0.2em 0.6em;
+  padding: 0.25em 0.7em;
   border: 1px solid currentColor;
-  margin-left: var(--space-1);
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
-.tag--available { color: var(--ink-soft); }
 .tag--sold { color: var(--accent); }
 
-/* --- 10. Footer ------------------------------------------------------------- */
+/* --- 13. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
   padding-block: var(--space-4);
-  margin-top: var(--space-6);
 }
 
 .site-footer__inner > * + * { margin-top: var(--space-1); }
-.site-footer .muted { font-size: 0.875rem; max-width: var(--measure); }
+.site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 11. Responsive --------------------------------------------------------- */
+/* --- 14. Responsive --------------------------------------------------------- */
 
-/* A media query applies rules only when a condition is true. Below 800px the
-   two hero columns collapse into one — side-by-side stops working on a phone. */
+/* A media query applies rules only when a condition is true. Below 800px
+   every two-column layout collapses to a single column. */
 @media (max-width: 800px) {
   :root {
     --space-5: 3rem;
     --space-6: 4rem;
   }
 
-  .hero__inner {
+  /* .feature:nth-of-type(even) must be listed explicitly. It is a more
+     specific selector than .feature, so .feature alone would lose to it. */
+  .hero__inner,
+  .feature,
+  .feature:nth-of-type(even),
+  .spotlight {
     grid-template-columns: 1fr;
     gap: var(--space-4);
   }
 
-  .site-header__inner {
-    gap: var(--space-2);
-  }
+  .feature:nth-of-type(even) .feature__media { order: 0; }
+
+  .spotlight__figure { padding: var(--space-3); }
+
+  .site-header__inner { gap: var(--space-2); }
 }
 
 /* Respect a reader who has asked their system to reduce motion. */

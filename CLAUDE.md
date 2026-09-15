@@ -57,6 +57,15 @@ styling, cluttered layouts.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
 - The data model must support both one-of-a-kind originals and multi-copy
   editions.
+- **Artworks are never cropped.** Show them with `object-fit: contain` inside
+  a `.mat`. Photographs of people (artist portraits) may use `cover`.
+- **Artwork titles are italic** (`.work-title`), the art-writing convention.
+- **Hover effects only on interactive elements.** A hover promises a click;
+  artwork cards get none until they link somewhere (Stage 8).
+- **Visual-only decisions live in CSS**, not Jinja conditionals (for example
+  the alternating artist layout uses `:nth-of-type(even)`).
+- **Type:** Cormorant Garamond for display sizes only, Inter for text.
+  Loaded from Google Fonts for now; self-host at Stage 19 for privacy and speed.
 
 ## Running it
 
@@ -91,7 +100,7 @@ Status: `[x]` done · `[ ]` not started
 - [x] **2 — Basic website.** Jinja templates, `render_template`, template
       inheritance, static files, semantic HTML, CSS fundamentals, the homepage
       (nav, hero, intro, two artist sections, featured works, footer).
-- [ ] **3 — Gallery design.** Elevate the landing page: artist cards, featured
+- [x] **3 — Gallery design.** Elevate the landing page: artist cards, featured
       artwork, CSS Grid, responsive layouts, hover/transition, accessibility.
 - [ ] **4 — Artist pages & routes.** `/artists/<slug>`, URL parameters, one
       route serving many artists, passing Python data into templates.

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" role="img" aria-label="PLACEHOLDER placeholder">
+  <rect width="1000" height="1000" fill="#CBBFB5"/>
+  <rect x="180" y="180" width="640" height="640" fill="#B7A99D"/>
+  <circle cx="500" cy="500" r="180" fill="#A5968A"/>
+  <rect x="6" y="6" width="988" height="988" fill="none" stroke="#00000018" stroke-width="2"/>
+  <text x="500" y="500" text-anchor="middle" font-family="Georgia, serif" font-size="45" fill="#00000055" letter-spacing="5.4">PLACEHOLDER</text>
+  <text x="500" y="585" text-anchor="middle" font-family="Georgia, serif" font-size="27" fill="#00000040" letter-spacing="4.9">ARTWORK SIX</text>
+</svg>
