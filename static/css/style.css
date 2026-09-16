@@ -228,7 +228,8 @@ a:focus-visible,
   transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
-.nav a:hover {
+.nav a:hover,
+.nav a[aria-current="page"] {
   color: var(--ink);
   border-bottom-color: var(--ink);
 }
@@ -326,7 +327,9 @@ a:focus-visible,
 /* Hover only on things you can actually click. A hover effect is a promise
    that something is interactive, so the artwork cards get none until they
    become links at Stage 8. */
-.feature__media:hover img { transform: scale(1.03); }
+/* The a. prefix limits the zoom to when .feature__media IS a link. On an
+   artist page the same component is a plain <figure>, so it stays still. */
+a.feature__media:hover img { transform: scale(1.03); }
 
 .feature__body > * + * { margin-top: var(--space-2); }
 .feature__body .heading { margin-top: var(--space-1); }
@@ -419,7 +422,37 @@ a:focus-visible,
 
 .tag--sold { color: var(--accent); }
 
-/* --- 13. Footer ------------------------------------------------------------- */
+/* --- 13. Artist page -------------------------------------------------------- */
+
+.breadcrumb {
+  padding-top: var(--space-4);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The slash between crumbs is decoration, so CSS draws it instead of the HTML. */
+.breadcrumb li + li::before {
+  content: "/";
+  margin-right: var(--space-1);
+}
+
+.breadcrumb a { text-decoration: none; }
+.breadcrumb a:hover { color: var(--ink); text-decoration: underline; }
+
+.section--flush-top { padding-top: var(--space-4); }
+
+/* --- 14. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -429,7 +462,7 @@ a:focus-visible,
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 14. Responsive --------------------------------------------------------- */
+/* --- 15. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */

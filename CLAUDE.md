@@ -46,6 +46,14 @@ styling, cluttered layouts.
 
 ## Conventions
 
+- **Routes never touch data directly.** They call data-access functions in
+  `app.py` (`get_artist`, `get_artworks_by_artist`, ...). At Stage 6 only those
+  function bodies change to SQL; routes and templates stay the same.
+- **Site-wide template variables** (`gallery_name`, `nav_artists`) come from
+  the `inject_site_globals` context processor, never from individual routes.
+- **Shared template pieces** live in `templates/macros.html` and are imported
+  with `{% from "macros.html" import ... %}`.
+- **Build URLs with `url_for`**, never hardcoded strings.
 - **Routes have no trailing slash** (`/artists`, `/cart`, `/artwork/123`).
   Werkzeug treats `/x` and `/x/` differently; one consistent style avoids
   surprise 404s and redirects.
@@ -102,7 +110,7 @@ Status: `[x]` done · `[ ]` not started
       (nav, hero, intro, two artist sections, featured works, footer).
 - [x] **3 — Gallery design.** Elevate the landing page: artist cards, featured
       artwork, CSS Grid, responsive layouts, hover/transition, accessibility.
-- [ ] **4 — Artist pages & routes.** `/artists/<slug>`, URL parameters, one
+- [x] **4 — Artist pages & routes.** `/artists/<slug>`, URL parameters, one
       route serving many artists, passing Python data into templates.
 - [ ] **5 — Database introduction.** SQLite, `schema.sql`, `artists` and
       `artworks` tables, primary/foreign keys, CRUD, why not hardcode.

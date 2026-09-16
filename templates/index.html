@@ -1,23 +1,7 @@
 {% extends "base.html" %}
+{% from "macros.html" import artwork_card, price_status %}
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
-
-{#
-  A macro is a reusable piece of template: a function that returns HTML.
-  Price and availability appear twice on this page and will appear again on
-  the artist and artwork pages, so the rule is written exactly once.
-  At Stage 4 it moves into its own file so every template can import it.
-#}
-{% macro price_status(art) %}
-  <p class="price">
-    {% if art.available %}
-      <span class="price__amount">{{ art.price_cents | usd }}</span>
-      <span class="tag">Available</span>
-    {% else %}
-      <span class="tag tag--sold">Sold</span>
-    {% endif %}
-  </p>
-{% endmacro %}
 
 {% block content %}
 
@@ -59,10 +43,9 @@
       <h2 class="section-title" id="artists-heading">The artists</h2>
 
       {% for artist in artists %}
-        {# TEMPORARY hardcoded URL. No artist route exists yet, so url_for()
-           would crash the page. This link 404s until Stage 4 replaces it with
-           url_for('artist_page', slug=artist.slug). #}
-        {% set collection_url = "/artists/" ~ artist.slug %}
+        {# url_for builds the URL from the route table: function name plus
+           the value for <slug>. If the URL pattern ever changes, this does not. #}
+        {% set collection_url = url_for('artist_page', slug=artist.slug) %}
 
         <article class="feature" id="{{ artist.slug }}">
           {# A second link to the same place, so mouse users can click the
@@ -128,20 +111,7 @@
 
       <ul class="artwork-grid">
         {% for art in featured %}
-          <li class="artwork">
-            <figure class="mat mat--fixed">
-              <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
-                   alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
-                   width="{{ art.image_width }}" height="{{ art.image_height }}"
-                   loading="lazy">
-            </figure>
-            <div class="artwork__meta">
-              <h3 class="artwork__title work-title">{{ art.title }}</h3>
-              <p class="muted small">{{ art.artist_name }}, {{ art.year }}</p>
-              <p class="muted small">{{ art.medium }}</p>
-              {{ price_status(art) }}
-            </div>
-          </li>
+          {{ artwork_card(art) }}
         {% else %}
           {# for/else: the else branch runs only when the list is empty. #}
           <li class="muted">No featured works yet.</li>

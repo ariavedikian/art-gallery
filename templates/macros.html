@@ -1,0 +1,49 @@
+{#
+  Reusable template pieces, shared by every page.
+
+  Import what you need near the top of a template:
+      {% from "macros.html" import artwork_card %}
+
+  This file is never rendered on its own. The name has no special meaning to
+  Flask; it is simply a template that only contains macros.
+#}
+
+
+{# Price and availability. Sold works show "Sold" and no price. #}
+{% macro price_status(art) %}
+  <p class="price">
+    {% if art.available %}
+      <span class="price__amount">{{ art.price_cents | usd }}</span>
+      <span class="tag">Available</span>
+    {% else %}
+      <span class="tag tag--sold">Sold</span>
+    {% endif %}
+  </p>
+{% endmacro %}
+
+
+{#
+  One artwork in a grid. Used on the homepage and on every artist page.
+
+  show_artist works like a Python default argument. On an artist's own page
+  every card is by the same person, so repeating the name would be noise:
+      {{ artwork_card(art, show_artist=false) }}
+#}
+{% macro artwork_card(art, show_artist=true) %}
+  <li class="artwork">
+    <figure class="mat mat--fixed">
+      <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
+           alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
+           width="{{ art.image_width }}" height="{{ art.image_height }}"
+           loading="lazy">
+    </figure>
+    <div class="artwork__meta">
+      <h3 class="artwork__title work-title">{{ art.title }}</h3>
+      <p class="muted small">
+        {%- if show_artist %}{{ art.artist_name }}, {% endif %}{{ art.year -}}
+      </p>
+      <p class="muted small">{{ art.medium }}</p>
+      {{ price_status(art) }}
+    </div>
+  </li>
+{% endmacro %}

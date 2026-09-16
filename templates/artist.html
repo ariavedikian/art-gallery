@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "macros.html" import artwork_card %}
+
+{#
+  One template for every artist. The route passes in `artist` and `artworks`;
+  this file never knows or cares which artist it is showing.
+#}
+
+{% block title %}{{ artist.name }} — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    {# A breadcrumb shows where this page sits in the site. <ol> because the
+       order matters; aria-current marks the page you are on. #}
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li aria-current="page">{{ artist.name }}</li>
+      </ol>
+    </nav>
+  </div>
+
+  <!-- ARTIST INTRODUCTION ---------------------------------------------- -->
+  <section class="section section--flush-top">
+    <div class="container">
+      {# The same .feature component as the homepage. Here the image is a
+         plain <figure>, not a link, so the hover zoom does not apply. #}
+      <div class="feature">
+        <figure class="feature__media">
+          <img src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
+               alt="Placeholder portrait of {{ artist.name }}"
+               width="800" height="1000" fetchpriority="high">
+        </figure>
+
+        <div class="feature__body">
+          <p class="eyebrow">Collection</p>
+          <h1 class="display">{{ artist.name }}</h1>
+          <p class="muted small">{{ artist.lifespan }}</p>
+          <p class="lead">{{ artist.summary }}</p>
+          <p>{{ artist.bio }}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKS ------------------------------------------------------------ -->
+  <section class="section section--tinted" aria-labelledby="works-heading">
+    <div class="container">
+      {% set count = artworks | length %}
+      <h2 class="section-title" id="works-heading">
+        Works · {{ count }} {{ "piece" if count == 1 else "pieces" }}
+      </h2>
+
+      <ul class="artwork-grid">
+        {% for art in artworks %}
+          {{ artwork_card(art, show_artist=false) }}
+        {% else %}
+          <li class="muted">No works in this collection yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+{% endblock %}

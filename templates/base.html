@@ -34,12 +34,20 @@
 
       <nav aria-label="Main">
         <ul class="nav">
-          <li><a href="{{ url_for('home') }}">Gallery</a></li>
-          {# `| default([])` keeps the nav from crashing on a page that does not
-             pass `artists`. The proper fix is a context processor, Stage 4. #}
-          {% for artist in artists | default([]) %}
-            <li><a href="#{{ artist.slug }}">{{ artist.name }}</a></li>
+          {# nav_artists and gallery_name come from the context processor in
+             app.py, so they exist on every page without each route passing them.
+             aria-current="page" tells screen readers which link is this page;
+             the CSS styles that same attribute so both always agree. #}
+          {% set home_url = url_for('home') %}
+          <li><a href="{{ home_url }}"
+                 {%- if request.path == home_url %} aria-current="page"{% endif %}>Gallery</a></li>
+
+          {% for artist in nav_artists %}
+            {% set artist_url = url_for('artist_page', slug=artist.slug) %}
+            <li><a href="{{ artist_url }}"
+                   {%- if request.path == artist_url %} aria-current="page"{% endif %}>{{ artist.name }}</a></li>
           {% endfor %}
+
           <li><a href="{{ url_for('about') }}">About</a></li>
         </ul>
       </nav>
