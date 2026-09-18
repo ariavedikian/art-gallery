@@ -60,6 +60,15 @@ styling, cluttered layouts.
 - **Placeholder images** live in `static/images/placeholders/` and are visibly
   labelled as placeholders. Real images arrive in `static/images/jansem/` and
   `static/images/carzou/` at Stage 17/21.
+- **The database is generated, never edited by hand.** `database/schema.sql`
+  and `database/seed.sql` are the source of truth; rebuild the .db file with
+  `python init_db.py --reset`. The .db file is gitignored.
+- **Turn foreign keys on** with `PRAGMA foreign_keys = ON` on every
+  connection. SQLite does not enforce them otherwise.
+- **SQLite has no BOOLEAN or DATE type.** Use 0/1 for flags and ISO text
+  for dates. Artwork `year` is TEXT, since art dates can be approximate.
+- **Store facts, derive conclusions.** `available_for_purchase` and
+  `inventory_quantity` are stored; Sold is worked out from them.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -96,7 +105,8 @@ art-gallery/
 ├── README.md         # how to run it
 ├── templates/        # Jinja HTML templates
 ├── static/           # css/ js/ images/
-└── database/         # schema.sql + art_gallery.db   (Stage 5)
+├── init_db.py        # rebuilds the database from SQL files
+└── database/         # schema.sql, seed.sql, art_gallery.db (generated)
 ```
 
 ## Stage roadmap
@@ -112,7 +122,7 @@ Status: `[x]` done · `[ ]` not started
       artwork, CSS Grid, responsive layouts, hover/transition, accessibility.
 - [x] **4 — Artist pages & routes.** `/artists/<slug>`, URL parameters, one
       route serving many artists, passing Python data into templates.
-- [ ] **5 — Database introduction.** SQLite, `schema.sql`, `artists` and
+- [x] **5 — Database introduction.** SQLite, `schema.sql`, `artists` and
       `artworks` tables, primary/foreign keys, CRUD, why not hardcode.
 - [ ] **6 — Connect Flask to SQLite.** Connections, parameterised queries,
       passing rows to templates, safe handling of user input.
