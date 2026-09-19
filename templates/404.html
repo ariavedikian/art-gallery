@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{#
+  Shown for any 404 on the site: an unknown artist slug, an artwork id that
+  does not exist, or a mistyped address. It extends base.html like every
+  other page, so a visitor who gets lost still has the nav to get back.
+#}
+
+{% block title %}Page not found — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container prose">
+      <p class="eyebrow">404</p>
+      <h1 class="display">Page not found.</h1>
+      <p class="lead">The page you asked for does not exist. It may have been
+        moved, or the address may be mistyped.</p>
+      <p>
+        <a class="button" href="{{ url_for('gallery') }}">Browse all works</a>
+      </p>
+    </div>
+  </section>
+
+{% endblock %}

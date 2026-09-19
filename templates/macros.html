@@ -80,7 +80,14 @@
            loading="lazy">
     </figure>
     <div class="artwork__meta">
-      <h3 class="artwork__title work-title">{{ art.title }}</h3>
+      <h3 class="artwork__title work-title">
+        {# Every placeholder work is called "Artwork Title", so the accessible
+           name gets the medium (and artist) appended, hidden on screen. A
+           screen reader otherwise hears the same link text six times over. #}
+        <a class="artwork__link" href="{{ url_for('artwork_page', artwork_id=art.id) }}">
+          {{ art.title }}<span class="visually-hidden">, {{ art.medium }}{% if show_artist %}, by {{ art.artist_name }}{% endif %}</span>
+        </a>
+      </h3>
       <p class="muted small">
         {%- if show_artist %}{{ art.artist_name }}, {% endif %}{{ art.year -}}
       </p>

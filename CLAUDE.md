@@ -77,6 +77,11 @@ styling, cluttered layouts.
   decide how a work looks.
 - **`display_order`** is the gallery running order (lower first, seeded in
   steps of 10). The lowest-numbered featured work is the homepage spotlight.
+- **Numeric URL parameters use `<int:...>`.** The converter refuses
+  non-numbers at the routing table, before any code runs, and hands the
+  view a real int rather than a string.
+- **Not found is a 404, never a 200.** Error templates are returned as
+  `render_template(...), 404` so the status code matches the page.
 - **One grid, one macro.** Every page showing artworks calls
   `artwork_grid(...)`; no page writes its own `<ul class="artwork-grid">`.
 - **Store facts, derive conclusions.** `available_for_purchase` and
@@ -89,8 +94,8 @@ styling, cluttered layouts.
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
-- **Hover effects only on interactive elements.** A hover promises a click;
-  artwork cards get none until they link somewhere (Stage 8).
+- **Hover effects only on interactive elements.** A hover promises a click.
+  Artwork cards became links at Stage 8 and got one then.
 - **Visual-only decisions live in CSS**, not Jinja conditionals (for example
   the alternating artist layout uses `:nth-of-type(even)`).
 - **Type:** Cormorant Garamond for display sizes only, Inter for text.
@@ -115,7 +120,7 @@ art-gallery/
 ├── requirements.txt  # pinned dependencies
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
-├── templates/        # base, index, gallery, artist, macros
+├── templates/        # base, index, gallery, artist, artwork, 404, macros
 ├── static/           # css/ js/ images/
 ├── init_db.py        # rebuilds the database from SQL files
 └── database/         # schema.sql, seed.sql, art_gallery.db (generated)
@@ -140,7 +145,7 @@ Status: `[x]` done · `[ ]` not started
       passing rows to templates, safe handling of user input.
 - [x] **7 — Dynamic artwork gallery.** Database-driven artwork cards, Jinja
       loops, separating data from presentation.
-- [ ] **8 — Artwork detail page.** `/artwork/<id>`, fetching one record,
+- [x] **8 — Artwork detail page.** `/artwork/<id>`, fetching one record,
       handling a missing record, 404 vs 500.
 - [ ] **9 — JavaScript interactivity.** Lightbox viewer: DOM manipulation,
       event listeners, client state, keyboard nav, Escape/click-outside.

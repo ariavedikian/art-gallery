@@ -68,4 +68,5 @@ art-gallery/
 - [x] Stage 5 — SQLite schema and placeholder data
 - [x] Stage 6 — connect Flask to SQLite
 - [x] Stage 7 — database-driven artwork gallery and All works page
-- [ ] Stage 8 — artwork detail pages
+- [x] Stage 8 — artwork detail pages and a custom 404
+- [ ] Stage 9 — JavaScript lightbox

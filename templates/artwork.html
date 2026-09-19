@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "macros.html" import artwork_grid, price_status %}
+
+{#
+  One artwork, in detail. The route fetches a single row and passes it in as
+  `artwork`; if the id did not exist the route sent a 404 and this template
+  was never rendered. So there is no "does it exist?" check anywhere here.
+#}
+
+{% block title %}{{ artwork.title }} — {{ artwork.artist_name }} — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li><a href="{{ url_for('artist_page', slug=artwork.artist_slug) }}">{{ artwork.artist_name }}</a></li>
+        <li aria-current="page">{{ artwork.title }}</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <div class="artwork-detail">
+
+        <figure class="mat artwork-detail__figure">
+          {# The only image on the page the visitor came to see, so it loads
+             eagerly and at high priority. No lazy loading here. #}
+          <img src="{{ url_for('static', filename='images/' ~ artwork.image) }}"
+               alt="Placeholder image of {{ artwork.title }} by {{ artwork.artist_name }}"
+               width="{{ artwork.image_width }}" height="{{ artwork.image_height }}"
+               fetchpriority="high">
+        </figure>
+
+        <div class="artwork-detail__body">
+          <p class="eyebrow">{{ artwork.category }}</p>
+          <h1 class="heading work-title">{{ artwork.title }}</h1>
+
+          <dl class="details">
+            <div>
+              <dt>Artist</dt>
+              <dd><a href="{{ url_for('artist_page', slug=artwork.artist_slug) }}">{{ artwork.artist_name }}</a></dd>
+            </div>
+            <div><dt>Date</dt><dd>{{ artwork.year }}</dd></div>
+            <div><dt>Medium</dt><dd>{{ artwork.medium }}</dd></div>
+            {% if artwork.available_for_purchase and artwork.inventory_quantity > 1 %}
+              <div><dt>Edition</dt><dd>{{ artwork.inventory_quantity }} available</dd></div>
+            {% endif %}
+          </dl>
+
+          <p>{{ artwork.description }}</p>
+
+          {{ price_status(artwork) }}
+
+          {# Whether a work can be bought is a rule about inventory, so it is
+             decided from the same two stored facts as the price line. #}
+          <div class="purchase">
+            {% if not artwork.available_for_purchase %}
+              <p class="muted small">This work is on display and is not for sale.</p>
+            {% elif artwork.inventory_quantity == 0 %}
+              <p class="muted small">This work has been sold.</p>
+            {% else %}
+              {# Inert until the cart exists at Stage 11. A disabled button is
+                 honest: it shows the action without pretending it works. #}
+              <button class="button" type="button" disabled>Add to cart</button>
+              <p class="purchase__note muted small">Purchasing opens soon.</p>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  {% if related %}
+  <section class="section section--tinted" aria-labelledby="related-heading">
+    <div class="container">
+      <h2 class="section-title" id="related-heading">More by {{ artwork.artist_name }}</h2>
+      {{ artwork_grid(related, show_artist=false) }}
+    </div>
+  </section>
+  {% endif %}
+
+{% endblock %}

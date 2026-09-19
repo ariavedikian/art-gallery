@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 7: the artwork gallery is fully database-driven.
+Stage 8: every artwork has its own page.
 
 Every page that shows artworks — the homepage, each artist page and All works
 — fetches rows with SQL and renders them through one shared grid macro. Which
@@ -161,6 +161,38 @@ def get_all_artworks():
     """)
 
 
+def get_artwork(artwork_id):
+    """Return one artwork with its artist's name, or None if no such id exists.
+
+    one=True is the difference between this and the list functions: it returns
+    a single row instead of a list of them. Returning None for "not found" is
+    deliberate — it is the caller, the route, that knows a missing artwork
+    should become a 404 rather than an error.
+    """
+    return query_db(f"""
+        SELECT {_ARTWORK_COLUMNS}
+        FROM artworks aw
+        JOIN artists ar ON ar.id = aw.artist_id
+        WHERE aw.id = ?
+    """, (artwork_id,), one=True)
+
+
+def get_related_artworks(artist_slug, exclude_id, limit=3):
+    """Other works by the same artist, for the foot of an artwork page.
+
+    LIMIT caps how many rows come back. Combined with ORDER BY it means the
+    database returns three rows, not all of them for Python to throw away.
+    """
+    return query_db(f"""
+        SELECT {_ARTWORK_COLUMNS}
+        FROM artworks aw
+        JOIN artists ar ON ar.id = aw.artist_id
+        WHERE ar.slug = ? AND aw.id != ?
+        ORDER BY aw.display_order, aw.id
+        LIMIT ?
+    """, (artist_slug, exclude_id, limit))
+
+
 def get_artworks_by_artist(slug):
     return query_db(f"""
         SELECT {_ARTWORK_COLUMNS}
@@ -239,6 +271,24 @@ def gallery():
     return render_template("gallery.html", artworks=artworks)
 
 
+# <int:artwork_id> only matches digits, and hands the function a real int.
+# With a plain <artwork_id>, /artwork/abc would reach this function and rely
+# on the query finding nothing; the converter refuses it at the routing table
+# instead, before any of our code runs.
+@app.route("/artwork/<int:artwork_id>")
+def artwork_page(artwork_id):
+    artwork = get_artwork(artwork_id)
+
+    if artwork is None:
+        abort(404)
+
+    return render_template(
+        "artwork.html",
+        artwork=artwork,
+        related=get_related_artworks(artwork["artist_slug"], artwork_id),
+    )
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -246,7 +296,21 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 7}
+    return {"status": "ok", "stage": 8}
+
+
+# --- Error handlers ----------------------------------------------------------
+
+@app.errorhandler(404)
+def page_not_found(error):
+    """Render our own 404 page instead of the plain Werkzeug one.
+
+    Returning a tuple sets the status code explicitly. Returning just the
+    template would send 200 OK with a page saying "not found", which lies to
+    browsers, search engines and monitoring tools. The status code is part of
+    the answer, not decoration.
+    """
+    return render_template("404.html"), 404
 
 
 if __name__ == "__main__":
