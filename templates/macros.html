@@ -72,7 +72,21 @@
 
 
 {% macro artwork_card(art, show_artist=true) %}
-  <li class="artwork">
+  {#
+    The data-* attributes carry this work's details to the JavaScript
+    lightbox, which reads them as card.dataset.title and so on. The server
+    already knows all of this, so putting it in the page costs nothing and
+    saves the browser a request. Jinja escapes the values, so a quotation
+    mark in a title cannot break out of the attribute.
+  #}
+  <li class="artwork"
+      data-title="{{ art.title }}"
+      data-artist="{{ art.artist_name }}"
+      data-year="{{ art.year }}"
+      data-medium="{{ art.medium }}"
+      data-description="{{ art.description }}"
+      data-image="{{ url_for('static', filename='images/' ~ art.image) }}"
+      data-href="{{ url_for('artwork_page', artwork_id=art.id) }}">
     <figure class="mat mat--fixed">
       <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
            alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"

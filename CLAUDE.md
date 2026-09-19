@@ -80,6 +80,15 @@ styling, cluttered layouts.
 - **Numeric URL parameters use `<int:...>`.** The converter refuses
   non-numbers at the routing table, before any code runs, and hands the
   view a real int rather than a string.
+- **JavaScript is an enhancement, never the only path.** Every card is a
+  real link to a real page; the lightbox intercepts the click. With JS off
+  the site still works, and modifier-clicks are left alone.
+- **Use the platform before writing it yourself** (`<dialog>` for modal
+  behaviour, focus handling and the backdrop). Where a built-in could not
+  be verified, add a documented fallback rather than trusting it blindly.
+- **Business rules are written once.** The lightbox copies the rendered
+  price line out of the card rather than reimplementing the Sold and
+  edition logic in JavaScript.
 - **Not found is a 404, never a 200.** Error templates are returned as
   `render_template(...), 404` so the status code matches the page.
 - **One grid, one macro.** Every page showing artworks calls
@@ -121,7 +130,7 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, 404, macros
-├── static/           # css/ js/ images/
+├── static/           # css/style.css, js/lightbox.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 └── database/         # schema.sql, seed.sql, art_gallery.db (generated)
 ```
@@ -147,7 +156,7 @@ Status: `[x]` done · `[ ]` not started
       loops, separating data from presentation.
 - [x] **8 — Artwork detail page.** `/artwork/<id>`, fetching one record,
       handling a missing record, 404 vs 500.
-- [ ] **9 — JavaScript interactivity.** Lightbox viewer: DOM manipulation,
+- [x] **9 — JavaScript interactivity.** Lightbox viewer: DOM manipulation,
       event listeners, client state, keyboard nav, Escape/click-outside.
 - [ ] **10 — Search & filtering.** Client-side filtering first, then the same
       job in SQL — the frontend vs backend processing tradeoff.

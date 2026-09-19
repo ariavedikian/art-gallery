@@ -513,7 +513,107 @@ a.feature__media:hover img { transform: scale(1.03); }
 
 .purchase__note { margin-top: var(--space-2); }
 
-/* --- 15. Footer ------------------------------------------------------------- */
+/* --- 15. Lightbox ---------------------------------------------------------- */
+
+/* A <dialog> is hidden until showModal() opens it, then sits in the browser
+   top layer above every other element, with ::backdrop dimming the page. */
+.lightbox {
+  width: min(96vw, 1400px);
+  max-width: none;
+  height: min(92vh, 900px);
+  max-height: none;
+  padding: 0;          /* zero padding, so a click on the dialog box itself
+                          is unambiguously a click outside the content */
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.lightbox::backdrop { background: rgb(23 20 15 / 0.86); }
+
+.lightbox__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  /* An explicit row that fills the dialog. Without it the row is sized by
+     its content, so a tall image makes the row tall and overflows. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--space-4);
+  height: 100%;
+  padding: var(--space-4);
+}
+
+.lightbox__figure {
+  position: relative;
+  min-height: 0;       /* without this a grid item refuses to shrink below
+                          the natural size of its content */
+}
+
+/* Absolutely positioned so its size comes from the figure, not from the
+   image file. A percentage height only works against a parent whose height
+   is already known, which is why max-height: 100% alone did nothing here.
+   object-fit: contain then letterboxes the artwork inside that box, so it
+   is never cropped and never overflows. */
+.lightbox__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lightbox__info {
+  align-self: center;
+  overflow-y: auto;
+}
+
+.lightbox__info > * + * { margin-top: var(--space-2); }
+
+.lightbox__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.lightbox__count {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+
+.lightbox__close,
+.lightbox__nav {
+  width: 2.75rem;
+  height: 2.75rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.lightbox__close:hover,
+.lightbox__nav:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.lightbox__close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.lightbox__close:focus-visible,
+.lightbox__nav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* --- 16. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -523,7 +623,7 @@ a.feature__media:hover img { transform: scale(1.03); }
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 16. Responsive --------------------------------------------------------- */
+/* --- 17. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */
@@ -549,6 +649,15 @@ a.feature__media:hover img { transform: scale(1.03); }
   .spotlight__figure { padding: var(--space-3); }
 
   .site-header__inner { gap: var(--space-2); }
+
+  .lightbox__inner {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .lightbox__info { align-self: start; }
 }
 
 /* Respect a reader who has asked their system to reduce motion. */
