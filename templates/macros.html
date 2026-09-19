@@ -9,14 +9,30 @@
 #}
 
 
-{# Price and availability. Sold works show "Sold" and no price. #}
+{#
+  Price and availability, worked out from the two facts the database stores:
+
+    available_for_purchase  is it offered for sale at all?
+    inventory_quantity      how many are left?
+
+  Neither "Sold" nor "Not for sale" is stored anywhere; both are conclusions
+  drawn here, at the moment of display.
+#}
 {% macro price_status(art) %}
   <p class="price">
-    {% if art.available %}
-      <span class="price__amount">{{ art.price_cents | usd }}</span>
-      <span class="tag">Available</span>
-    {% else %}
+    {% if not art.available_for_purchase %}
+      {# On display only, so no price is shown. #}
+      <span class="tag">Not for sale</span>
+    {% elif art.inventory_quantity == 0 %}
       <span class="tag tag--sold">Sold</span>
+    {% else %}
+      <span class="price__amount">{{ art.price_cents | usd }}</span>
+      {% if art.inventory_quantity > 1 %}
+        {# An edition: several copies of the same work exist. #}
+        <span class="tag">{{ art.inventory_quantity }} available</span>
+      {% else %}
+        <span class="tag">Available</span>
+      {% endif %}
     {% endif %}
   </p>
 {% endmacro %}

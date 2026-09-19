@@ -63,6 +63,11 @@ styling, cluttered layouts.
 - **The database is generated, never edited by hand.** `database/schema.sql`
   and `database/seed.sql` are the source of truth; rebuild the .db file with
   `python init_db.py --reset`. The .db file is gitignored.
+- **One connection per request**, opened lazily by `get_db()` on Flask's `g`
+  and closed by the `teardown_appcontext` handler. Never open a connection
+  inside a loop or at import time.
+- **Rows use `sqlite3.Row`**, so templates can write `{{ art.title }}`.
+  Plain tuples render as empty strings in Jinja, silently.
 - **Turn foreign keys on** with `PRAGMA foreign_keys = ON` on every
   connection. SQLite does not enforce them otherwise.
 - **SQLite has no BOOLEAN or DATE type.** Use 0/1 for flags and ISO text
@@ -124,7 +129,7 @@ Status: `[x]` done · `[ ]` not started
       route serving many artists, passing Python data into templates.
 - [x] **5 — Database introduction.** SQLite, `schema.sql`, `artists` and
       `artworks` tables, primary/foreign keys, CRUD, why not hardcode.
-- [ ] **6 — Connect Flask to SQLite.** Connections, parameterised queries,
+- [x] **6 — Connect Flask to SQLite.** Connections, parameterised queries,
       passing rows to templates, safe handling of user input.
 - [ ] **7 — Dynamic artwork gallery.** Database-driven artwork cards, Jinja
       loops, separating data from presentation.
