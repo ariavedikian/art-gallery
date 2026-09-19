@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 8: every artwork has its own page.
+Stage 10 (part 1): the collection can be filtered in the browser.
 
 Every page that shows artworks — the homepage, each artist page and All works
 — fetches rows with SQL and renders them through one shared grid macro. Which
@@ -161,6 +161,18 @@ def get_all_artworks():
     """)
 
 
+def get_categories():
+    """The distinct categories actually in use, for the filter menu.
+
+    DISTINCT collapses duplicate values, so three paintings produce one
+    "Painting" option. Reading the options from the data means a new category
+    appears in the filter the moment an artwork uses it — nothing to keep in
+    sync by hand.
+    """
+    rows = query_db("SELECT DISTINCT category FROM artworks ORDER BY category")
+    return [row["category"] for row in rows]
+
+
 def get_artwork(artwork_id):
     """Return one artwork with its artist's name, or None if no such id exists.
 
@@ -267,8 +279,14 @@ def artist_page(slug):
 
 @app.route("/gallery")
 def gallery():
-    artworks = get_all_artworks()
-    return render_template("gallery.html", artworks=artworks)
+    # Every work is sent to the browser, and the filtering happens there.
+    # That is only reasonable while the collection is small; see the notes
+    # in static/js/filter.js for where the limit is.
+    return render_template(
+        "gallery.html",
+        artworks=get_all_artworks(),
+        categories=get_categories(),
+    )
 
 
 # <int:artwork_id> only matches digits, and hands the function a real int.
@@ -296,7 +314,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 8}
+    return {"status": "ok", "stage": 10}
 
 
 # --- Error handlers ----------------------------------------------------------

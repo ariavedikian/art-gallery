@@ -58,18 +58,29 @@
   // what it says (Sold, an edition count, not for sale) lives in one Jinja
   // macro; rewriting that rule here in JavaScript would mean two copies of it
   // that could disagree.
-  var works = cards.map(function (card) {
-    return {
-      title: card.dataset.title,
-      artist: card.dataset.artist,
-      year: card.dataset.year,
-      medium: card.dataset.medium,
-      description: card.dataset.description,
-      image: card.dataset.image,
-      href: card.dataset.href,
-      priceHtml: card.querySelector(".price").innerHTML
-    };
-  });
+  //
+  // This runs each time the viewer opens rather than once at load, and skips
+  // hidden cards: Stage 10 lets the filter hide works, and paging through
+  // pieces the visitor has filtered out would be a small lie.
+  function collectWorks() {
+    return cards.filter(function (card) {
+      return !card.hidden;
+    }).map(function (card) {
+      return {
+        card: card,
+        title: card.dataset.title,
+        artist: card.dataset.artist,
+        year: card.dataset.year,
+        medium: card.dataset.medium,
+        description: card.dataset.description,
+        image: card.dataset.image,
+        href: card.dataset.href,
+        priceHtml: card.querySelector(".price").innerHTML
+      };
+    });
+  }
+
+  var works = [];
 
   // The whole state of this feature: which work is showing. One number.
   var index = 0;
@@ -98,17 +109,21 @@
     view.price.innerHTML = work.priceHtml;
   }
 
-  function open(startIndex) {
-    show(startIndex);
+  function open(card) {
+    works = collectWorks();
+
+    // Paging only makes sense with something to page to.
+    view.controls.hidden = works.length < 2;
+
+    var start = works.findIndex(function (work) {
+      return work.card === card;
+    });
+
+    show(start === -1 ? 0 : start);
     // showModal, not show: it puts the dialog above everything else, dims the
     // page behind it, keeps Tab inside it, and closes on Escape. All of that
     // is behaviour the browser gives us for free.
     dialog.showModal();
-  }
-
-  // One work on the page means nothing to page through.
-  if (works.length < 2) {
-    view.controls.hidden = true;
   }
 
   // --- Events ---------------------------------------------------------------
@@ -133,7 +148,7 @@
       // The card is a link to the artwork page. preventDefault stops the
       // browser following it so the viewer can open instead.
       event.preventDefault();
-      open(cards.indexOf(card));
+      open(card);
     });
   });
 

@@ -86,6 +86,9 @@ styling, cluttered layouts.
 - **Use the platform before writing it yourself** (`<dialog>` for modal
   behaviour, focus handling and the backdrop). Where a built-in could not
   be verified, add a documented fallback rather than trusting it blindly.
+- **One rule, one place.** `status_slug()` in macros.html is the single
+  definition of for-sale / sold / not-for-sale; the price line and the
+  filter data attribute both read it.
 - **Business rules are written once.** The lightbox copies the rendered
   price line out of the card rather than reimplementing the Sold and
   edition logic in JavaScript.
@@ -130,14 +133,14 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, 404, macros
-├── static/           # css/style.css, js/lightbox.js, images/
+├── static/           # css/style.css, js/{lightbox,filter}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 └── database/         # schema.sql, seed.sql, art_gallery.db (generated)
 ```
 
 ## Stage roadmap
 
-Status: `[x]` done · `[ ]` not started
+Status: `[x]` done · `[~]` partly done · `[ ]` not started
 
 - [x] **1 — Environment & Flask basics.** venv, requirements.txt, first routes,
       request/response cycle, localhost, status codes.
@@ -158,8 +161,10 @@ Status: `[x]` done · `[ ]` not started
       handling a missing record, 404 vs 500.
 - [x] **9 — JavaScript interactivity.** Lightbox viewer: DOM manipulation,
       event listeners, client state, keyboard nav, Escape/click-outside.
-- [ ] **10 — Search & filtering.** Client-side filtering first, then the same
-      job in SQL — the frontend vs backend processing tradeoff.
+- [~] **10 — Search & filtering.** Part 1 DONE: filtering in the browser over
+      the cards already on the page (search, artist, category, availability,
+      price). Part 2 TO DO: the same job in SQL, with the filters in the query
+      string so a filtered view has a URL and works without JavaScript.
 - [ ] **11 — Shopping cart.** Sessions, cart state, add/remove/quantity,
       subtotal, inventory rules for one-of-a-kind pieces.
 - [ ] **12 — Checkout.** POST requests, form handling, validation, order

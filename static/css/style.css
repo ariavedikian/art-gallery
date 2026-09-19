@@ -513,7 +513,59 @@ a.feature__media:hover img { transform: scale(1.03); }
 
 .purchase__note { margin-top: var(--space-2); }
 
-/* --- 15. Lightbox ---------------------------------------------------------- */
+/* --- 15. Filters ------------------------------------------------------------ */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.filters label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.filters input,
+.filters select {
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.55em 0.7em;
+  min-width: 11rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.filters input:focus-visible,
+.filters select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.filter-status {
+  margin-bottom: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.filter-empty { margin-top: var(--space-3); }
+
+/* The hidden attribute must win against any display set elsewhere. */
+[hidden] { display: none !important; }
+
+/* --- 16. Lightbox ---------------------------------------------------------- */
 
 /* A <dialog> is hidden until showModal() opens it, then sits in the browser
    top layer above every other element, with ::backdrop dimming the page. */
@@ -613,7 +665,7 @@ a.feature__media:hover img { transform: scale(1.03); }
   outline-offset: 3px;
 }
 
-/* --- 16. Footer ------------------------------------------------------------- */
+/* --- 17. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -623,7 +675,7 @@ a.feature__media:hover img { transform: scale(1.03); }
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 17. Responsive --------------------------------------------------------- */
+/* --- 18. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */

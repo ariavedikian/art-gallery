@@ -2,9 +2,11 @@
 {% from "macros.html" import artwork_grid %}
 
 {#
-  The whole collection on one page. It holds no artwork markup of its own:
-  the grid comes from the same macro the homepage and artist pages use, and
-  the rows come from the database in the gallery's curated order.
+  The whole collection on one page, with filters applied in the browser.
+
+  The server sends every work; static/js/filter.js hides the ones that do not
+  match. That is fine at this size and has real limits — see the notes in
+  that file.
 #}
 
 {% block title %}All works — {{ gallery_name }}{% endblock %}
@@ -29,14 +31,83 @@
     </div>
   </section>
 
-  <section class="section section--tinted" aria-labelledby="all-works-heading">
+  <section class="section section--tinted" aria-labelledby="browse-heading">
     <div class="container">
-      {% set count = artworks | length %}
-      <h2 class="section-title" id="all-works-heading">
-        {{ count }} {{ "work" if count == 1 else "works" }}
-      </h2>
+      <h2 class="section-title" id="browse-heading">Browse the collection</h2>
+
+      {#
+        role="search" marks this as the page search region for screen readers.
+        Every control has a real <label>: a placeholder is not a label, since
+        it vanishes as soon as someone types.
+      #}
+      <form class="filters" id="filters" role="search" aria-label="Filter works">
+        <div class="filters__field">
+          <label for="filter-q">Search</label>
+          <input type="search" id="filter-q" name="q" autocomplete="off"
+                 placeholder="Title, medium, artist">
+        </div>
+
+        <div class="filters__field">
+          <label for="filter-artist">Artist</label>
+          <select id="filter-artist" name="artist">
+            <option value="">All artists</option>
+            {% for artist in nav_artists %}
+              <option value="{{ artist.slug }}">{{ artist.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filters__field">
+          <label for="filter-category">Category</label>
+          <select id="filter-category" name="category">
+            <option value="">All categories</option>
+            {# Straight from the database, so the menu cannot fall out of
+               step with the works that exist. #}
+            {% for category in categories %}
+              <option value="{{ category }}">{{ category }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filters__field">
+          <label for="filter-status">Availability</label>
+          <select id="filter-status" name="status">
+            <option value="">Any</option>
+            <option value="for-sale">For sale</option>
+            <option value="sold">Sold</option>
+            <option value="not-for-sale">Not for sale</option>
+          </select>
+        </div>
+
+        <div class="filters__field">
+          <label for="filter-price">Price</label>
+          {# Values are in cents, matching the database, so JavaScript never
+             has to convert between dollars and cents. #}
+          <select id="filter-price" name="price">
+            <option value="">Any price</option>
+            <option value="0-100000">Under $1,000</option>
+            <option value="100000-300000">$1,000 to $3,000</option>
+            <option value="300000-">Over $3,000</option>
+          </select>
+        </div>
+
+        <button class="button button--quiet" type="reset" id="filter-reset">Clear</button>
+      </form>
+
+      {#
+        role="status" with aria-live="polite" means a screen reader announces
+        this line when it changes, without interrupting. Otherwise filtering
+        would silently remove cards with no indication that anything happened.
+      #}
+      <p class="filter-status" id="filter-count" role="status" aria-live="polite">
+        {{ artworks | length }} {{ "work" if artworks | length == 1 else "works" }}
+      </p>
 
       {{ artwork_grid(artworks, empty_message="No works in the collection yet.") }}
+
+      <p class="filter-empty muted" id="filter-empty" hidden>
+        No works match these filters.
+      </p>
     </div>
   </section>
 
