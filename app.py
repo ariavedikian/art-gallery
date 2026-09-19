@@ -1,12 +1,12 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 6: the site reads from SQLite.
+Stage 7: the artwork gallery is fully database-driven.
 
-The placeholder Python lists are gone. The routes still call the same
-data-access functions they called in Stage 4 — only the bodies changed, from
-looping over lists to running SQL. No route and (almost) no template changed,
-which was the whole point of putting that boundary there.
+Every page that shows artworks — the homepage, each artist page and All works
+— fetches rows with SQL and renders them through one shared grid macro. Which
+works appear and in what order is decided entirely by the queries here; the
+templates only decide how a work looks.
 """
 
 import sqlite3
@@ -143,7 +143,21 @@ def get_featured_artworks():
         FROM artworks aw
         JOIN artists ar ON ar.id = aw.artist_id
         WHERE aw.is_featured = 1
-        ORDER BY aw.id
+        ORDER BY aw.display_order, aw.id
+    """)
+
+
+def get_all_artworks():
+    """Every artwork in the collection, in the gallery running order.
+
+    Same columns, same shape, same JOIN as get_featured_artworks. Only the
+    WHERE clause is missing, because this page wants everything.
+    """
+    return query_db(f"""
+        SELECT {_ARTWORK_COLUMNS}
+        FROM artworks aw
+        JOIN artists ar ON ar.id = aw.artist_id
+        ORDER BY aw.display_order, aw.id
     """)
 
 
@@ -153,7 +167,7 @@ def get_artworks_by_artist(slug):
         FROM artworks aw
         JOIN artists ar ON ar.id = aw.artist_id
         WHERE ar.slug = ?
-        ORDER BY aw.id
+        ORDER BY aw.display_order, aw.id
     """, (slug,))
 
 
@@ -185,6 +199,8 @@ def inject_site_globals():
 
 @app.route("/")
 def home():
+    # Already sorted by the database, so the first row is the work the
+    # gallery chose to lead with. Nothing here re-sorts or re-filters.
     featured = get_featured_artworks()
 
     # Guard against an empty result: featured[0] on [] would raise IndexError
@@ -217,6 +233,12 @@ def artist_page(slug):
     )
 
 
+@app.route("/gallery")
+def gallery():
+    artworks = get_all_artworks()
+    return render_template("gallery.html", artworks=artworks)
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -224,7 +246,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 6}
+    return {"status": "ok", "stage": 7}
 
 
 if __name__ == "__main__":

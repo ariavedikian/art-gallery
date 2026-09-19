@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_card %}
+{% from "macros.html" import artwork_grid %}
 
 {#
   One template for every artist. The route passes in `artist` and `artworks`;
@@ -52,13 +52,8 @@
         Works · {{ count }} {{ "piece" if count == 1 else "pieces" }}
       </h2>
 
-      <ul class="artwork-grid">
-        {% for art in artworks %}
-          {{ artwork_card(art, show_artist=false) }}
-        {% else %}
-          <li class="muted">No works in this collection yet.</li>
-        {% endfor %}
-      </ul>
+      {{ artwork_grid(artworks, show_artist=false,
+                      empty_message="No works in this collection yet.") }}
     </div>
   </section>
 

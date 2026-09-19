@@ -72,6 +72,13 @@ styling, cluttered layouts.
   connection. SQLite does not enforce them otherwise.
 - **SQLite has no BOOLEAN or DATE type.** Use 0/1 for flags and ISO text
   for dates. Artwork `year` is TEXT, since art dates can be approximate.
+- **Sorting and filtering belong in SQL**, not in Jinja or Python. Which
+  works appear and in what order is decided by the query; templates only
+  decide how a work looks.
+- **`display_order`** is the gallery running order (lower first, seeded in
+  steps of 10). The lowest-numbered featured work is the homepage spotlight.
+- **One grid, one macro.** Every page showing artworks calls
+  `artwork_grid(...)`; no page writes its own `<ul class="artwork-grid">`.
 - **Store facts, derive conclusions.** `available_for_purchase` and
   `inventory_quantity` are stored; Sold is worked out from them.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
@@ -108,7 +115,7 @@ art-gallery/
 ├── requirements.txt  # pinned dependencies
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
-├── templates/        # Jinja HTML templates
+├── templates/        # base, index, gallery, artist, macros
 ├── static/           # css/ js/ images/
 ├── init_db.py        # rebuilds the database from SQL files
 └── database/         # schema.sql, seed.sql, art_gallery.db (generated)
@@ -131,7 +138,7 @@ Status: `[x]` done · `[ ]` not started
       `artworks` tables, primary/foreign keys, CRUD, why not hardcode.
 - [x] **6 — Connect Flask to SQLite.** Connections, parameterised queries,
       passing rows to templates, safe handling of user input.
-- [ ] **7 — Dynamic artwork gallery.** Database-driven artwork cards, Jinja
+- [x] **7 — Dynamic artwork gallery.** Database-driven artwork cards, Jinja
       loops, separating data from presentation.
 - [ ] **8 — Artwork detail page.** `/artwork/<id>`, fetching one record,
       handling a missing record, 404 vs 500.

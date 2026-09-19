@@ -42,6 +42,10 @@
           <li><a href="{{ home_url }}"
                  {%- if request.path == home_url %} aria-current="page"{% endif %}>Gallery</a></li>
 
+          {% set gallery_url = url_for('gallery') %}
+          <li><a href="{{ gallery_url }}"
+                 {%- if request.path == gallery_url %} aria-current="page"{% endif %}>All works</a></li>
+
           {% for artist in nav_artists %}
             {% set artist_url = url_for('artist_page', slug=artist.slug) %}
             <li><a href="{{ artist_url }}"

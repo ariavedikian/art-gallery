@@ -96,7 +96,15 @@ CREATE TABLE artworks (
 
     image         TEXT NOT NULL,      -- path under static/images/
     image_width   INTEGER NOT NULL,   -- real pixel size, so the browser can
-    image_height  INTEGER NOT NULL    -- reserve space before the file loads
+    image_height  INTEGER NOT NULL,   -- reserve space before the file loads
+
+    -- Curated ordering: lower numbers appear first, and the lowest-numbered
+    -- featured work becomes the homepage spotlight. Without this, the gallery
+    -- would be stuck with whatever order the rows happened to be inserted in.
+    --
+    -- Seed values step by 10 rather than 1, so a work can be slipped between
+    -- two others (15, say) without renumbering the whole collection.
+    display_order INTEGER NOT NULL DEFAULT 100
 );
 
 

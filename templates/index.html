@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_card, price_status %}
+{% from "macros.html" import artwork_grid, price_status %}
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
 
@@ -109,14 +109,7 @@
     <div class="container">
       <h2 class="section-title" id="featured-heading">Featured works</h2>
 
-      <ul class="artwork-grid">
-        {% for art in featured %}
-          {{ artwork_card(art) }}
-        {% else %}
-          {# for/else: the else branch runs only when the list is empty. #}
-          <li class="muted">No featured works yet.</li>
-        {% endfor %}
-      </ul>
+      {{ artwork_grid(featured, empty_message="No featured works yet.") }}
     </div>
   </section>
 

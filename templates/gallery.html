@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import artwork_grid %}
+
+{#
+  The whole collection on one page. It holds no artwork markup of its own:
+  the grid comes from the same macro the homepage and artist pages use, and
+  the rows come from the database in the gallery's curated order.
+#}
+
+{% block title %}All works — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li aria-current="page">All works</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container prose">
+      <p class="eyebrow">The collection</p>
+      <h1 class="display">All works</h1>
+      <p class="lead">Placeholder introduction to the full collection, shown
+        in the order the gallery has chosen to hang it.</p>
+    </div>
+  </section>
+
+  <section class="section section--tinted" aria-labelledby="all-works-heading">
+    <div class="container">
+      {% set count = artworks | length %}
+      <h2 class="section-title" id="all-works-heading">
+        {{ count }} {{ "work" if count == 1 else "works" }}
+      </h2>
+
+      {{ artwork_grid(artworks, empty_message="No works in the collection yet.") }}
+    </div>
+  </section>
+
+{% endblock %}

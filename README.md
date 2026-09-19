@@ -67,4 +67,5 @@ art-gallery/
 - [x] Stage 4 — artist pages and dynamic routes
 - [x] Stage 5 — SQLite schema and placeholder data
 - [x] Stage 6 — connect Flask to SQLite
-- [ ] Stage 7 — database-driven artwork gallery
+- [x] Stage 7 — database-driven artwork gallery and All works page
+- [ ] Stage 8 — artwork detail pages

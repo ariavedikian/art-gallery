@@ -45,6 +45,32 @@
   every card is by the same person, so repeating the name would be noise:
       {{ artwork_card(art, show_artist=false) }}
 #}
+{#
+  A whole grid of artworks, including the empty case.
+
+  Three pages show a grid of artworks: the homepage, each artist page, and
+  All works. Before this macro, each one repeated the <ul>, the loop and its
+  own empty message. Now they each pass a list and say what to show when it
+  is empty:
+
+      {{ artwork_grid(artworks, show_artist=false,
+                      empty_message="No works in this collection yet.") }}
+
+  Note what the macro does NOT do: it never sorts or filters. Which artworks
+  appear, and in what order, is decided by the SQL query that fetched them.
+#}
+{% macro artwork_grid(artworks, show_artist=true, empty_message="No works to show yet.") %}
+  <ul class="artwork-grid">
+    {% for art in artworks %}
+      {{ artwork_card(art, show_artist=show_artist) }}
+    {% else %}
+      {# for/else: the else branch runs only when the list is empty. #}
+      <li class="muted">{{ empty_message }}</li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
+
 {% macro artwork_card(art, show_artist=true) %}
   <li class="artwork">
     <figure class="mat mat--fixed">
