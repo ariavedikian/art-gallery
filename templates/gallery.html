@@ -2,11 +2,13 @@
 {% from "macros.html" import artwork_grid %}
 
 {#
-  The whole collection on one page, with filters applied in the browser.
+  The collection, filtered by the database.
 
-  The server sends every work; static/js/filter.js hides the ones that do not
-  match. That is fine at this size and has real limits — see the notes in
-  that file.
+  The filter controls are an ordinary GET form. Submitting it puts the choices
+  in the query string, Flask reads them, and SQL returns only the matching
+  rows. That means a filtered view has a real URL that can be shared,
+  bookmarked and reloaded, and the whole thing works with JavaScript off.
+  static/js/filter.js only saves you pressing the button.
 #}
 
 {% block title %}All works — {{ gallery_name }}{% endblock %}
@@ -36,15 +38,18 @@
       <h2 class="section-title" id="browse-heading">Browse the collection</h2>
 
       {#
-        role="search" marks this as the page search region for screen readers.
-        Every control has a real <label>: a placeholder is not a label, since
-        it vanishes as soon as someone types.
+        method="get" puts the values in the URL rather than in a request body.
+        That is right for a search: the result is a page you can link to, and
+        reloading it repeats a harmless read rather than re-submitting data.
+        Each control needs a name= — that is what becomes the query string key.
       #}
-      <form class="filters" id="filters" role="search" aria-label="Filter works">
+      <form class="filters" id="filters" role="search" aria-label="Filter works"
+            method="get" action="{{ url_for('gallery') }}">
         <div class="filters__field">
           <label for="filter-q">Search</label>
+          {# value= keeps what was typed after the page reloads. #}
           <input type="search" id="filter-q" name="q" autocomplete="off"
-                 placeholder="Title, medium, artist">
+                 placeholder="Title, medium, artist" value="{{ filters.q }}">
         </div>
 
         <div class="filters__field">
@@ -52,7 +57,11 @@
           <select id="filter-artist" name="artist">
             <option value="">All artists</option>
             {% for artist in nav_artists %}
-              <option value="{{ artist.slug }}">{{ artist.name }}</option>
+              {# selected= is how a <select> remembers its choice. #}
+              <option value="{{ artist.slug }}"
+                      {% if filters.artist == artist.slug %}selected{% endif %}>
+                {{ artist.name }}
+              </option>
             {% endfor %}
           </select>
         </div>
@@ -61,10 +70,11 @@
           <label for="filter-category">Category</label>
           <select id="filter-category" name="category">
             <option value="">All categories</option>
-            {# Straight from the database, so the menu cannot fall out of
-               step with the works that exist. #}
             {% for category in categories %}
-              <option value="{{ category }}">{{ category }}</option>
+              <option value="{{ category }}"
+                      {% if filters.category == category %}selected{% endif %}>
+                {{ category }}
+              </option>
             {% endfor %}
           </select>
         </div>
@@ -72,42 +82,50 @@
         <div class="filters__field">
           <label for="filter-status">Availability</label>
           <select id="filter-status" name="status">
-            <option value="">Any</option>
-            <option value="for-sale">For sale</option>
-            <option value="sold">Sold</option>
-            <option value="not-for-sale">Not for sale</option>
+            {% for value, label in [("", "Any"), ("for-sale", "For sale"),
+                                    ("sold", "Sold"), ("not-for-sale", "Not for sale")] %}
+              <option value="{{ value }}"
+                      {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
           </select>
         </div>
 
         <div class="filters__field">
           <label for="filter-price">Price</label>
-          {# Values are in cents, matching the database, so JavaScript never
-             has to convert between dollars and cents. #}
+          {# Values are in cents, matching both the database and the ranges
+             allowed in app.py. Anything else is ignored by the server. #}
           <select id="filter-price" name="price">
-            <option value="">Any price</option>
-            <option value="0-100000">Under $1,000</option>
-            <option value="100000-300000">$1,000 to $3,000</option>
-            <option value="300000-">Over $3,000</option>
+            {% for value, label in [("", "Any price"), ("0-100000", "Under $1,000"),
+                                    ("100000-300000", "$1,000 to $3,000"),
+                                    ("300000-", "Over $3,000")] %}
+              <option value="{{ value }}"
+                      {% if filters.price == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
           </select>
         </div>
 
-        <button class="button button--quiet" type="reset" id="filter-reset">Clear</button>
+        {# The no-JavaScript path. filter.js hides this and submits for you. #}
+        <button class="button" type="submit" id="filter-submit">Apply</button>
+
+        {# A link, not a reset button: clearing means asking the server for the
+           unfiltered page, which also clears the query string from the URL. #}
+        <a class="button button--quiet" href="{{ url_for('gallery') }}">Clear</a>
       </form>
 
-      {#
-        role="status" with aria-live="polite" means a screen reader announces
-        this line when it changes, without interrupting. Otherwise filtering
-        would silently remove cards with no indication that anything happened.
-      #}
+      {% set shown = artworks | length %}
+      {% set filtered = filters.q or filters.artist or filters.category
+                        or filters.status or filters.price %}
+
       <p class="filter-status" id="filter-count" role="status" aria-live="polite">
-        {{ artworks | length }} {{ "work" if artworks | length == 1 else "works" }}
+        {% if filtered %}
+          Showing {{ shown }} of {{ total }} works
+        {% else %}
+          {{ total }} {{ "work" if total == 1 else "works" }}
+        {% endif %}
       </p>
 
-      {{ artwork_grid(artworks, empty_message="No works in the collection yet.") }}
-
-      <p class="filter-empty muted" id="filter-empty" hidden>
-        No works match these filters.
-      </p>
+      {{ artwork_grid(artworks, empty_message="No works match these filters."
+                      if filtered else "No works in the collection yet.") }}
     </div>
   </section>
 

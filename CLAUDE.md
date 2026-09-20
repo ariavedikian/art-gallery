@@ -86,9 +86,14 @@ styling, cluttered layouts.
 - **Use the platform before writing it yourself** (`<dialog>` for modal
   behaviour, focus handling and the backdrop). Where a built-in could not
   be verified, add a documented fallback rather than trusting it blindly.
-- **One rule, one place.** `status_slug()` in macros.html is the single
-  definition of for-sale / sold / not-for-sale; the price line and the
-  filter data attribute both read it.
+- **One rule, one place.** `_STATUS_CASE` in app.py derives a `status`
+  column (for-sale / sold / not-for-sale) in SQL. The price line, the
+  purchase block and the availability filter all read that one definition.
+- **Filtering and sorting happen in SQL**, with the filters in the query
+  string so a filtered view has a URL and works without JavaScript. Query
+  STRUCTURE may be built in Python; VALUES always travel as ? parameters.
+- **Validate values that came from a URL** against a known set (see
+  `PRICE_RANGES`) rather than trusting them.
 - **Business rules are written once.** The lightbox copies the rendered
   price line out of the card rather than reimplementing the Sold and
   edition logic in JavaScript.
@@ -161,10 +166,9 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       handling a missing record, 404 vs 500.
 - [x] **9 — JavaScript interactivity.** Lightbox viewer: DOM manipulation,
       event listeners, client state, keyboard nav, Escape/click-outside.
-- [~] **10 — Search & filtering.** Part 1 DONE: filtering in the browser over
-      the cards already on the page (search, artist, category, availability,
-      price). Part 2 TO DO: the same job in SQL, with the filters in the query
-      string so a filtered view has a URL and works without JavaScript.
+- [x] **10 — Search & filtering.** Built twice on purpose: first in the
+      browser over the cards already on the page, then in SQL with the filters
+      in the query string. The SQL version is what ships.
 - [ ] **11 — Shopping cart.** Sessions, cart state, add/remove/quantity,
       subtotal, inventory rules for one-of-a-kind pieces.
 - [ ] **12 — Checkout.** POST requests, form handling, validation, order

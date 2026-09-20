@@ -70,4 +70,5 @@ art-gallery/
 - [x] Stage 7 — database-driven artwork gallery and All works page
 - [x] Stage 8 — artwork detail pages and a custom 404
 - [x] Stage 9 — JavaScript lightbox viewer
-- [~] Stage 10 — search and filtering (browser-side done; SQL version next)
+- [x] Stage 10 — search and filtering, in the browser then in SQL
+- [ ] Stage 11 — shopping cart

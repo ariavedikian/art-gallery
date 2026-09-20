@@ -10,37 +10,22 @@
 
 
 {#
-  Which of the three availability states a work is in, as a single word.
-
-  This exists so the rule is written once. price_status below renders it for
-  people; the card renders it into data-status for the filter to read.
-  Without it, adding the filter would have meant a second copy of the same
-  if/elif in JavaScript, free to drift out of step with this one.
-#}
-{% macro status_slug(art) %}
-  {%- if not art.available_for_purchase -%}not-for-sale
-  {%- elif art.inventory_quantity == 0 -%}sold
-  {%- else -%}for-sale
-  {%- endif -%}
-{% endmacro %}
-
-
-{#
   Price and availability, worked out from the two facts the database stores:
 
     available_for_purchase  is it offered for sale at all?
     inventory_quantity      how many are left?
 
-  Neither "Sold" nor "Not for sale" is stored anywhere; both are conclusions
-  drawn here, at the moment of display.
+  Neither "Sold" nor "Not for sale" is stored anywhere. The query derives
+  them into a `status` column (see _STATUS_CASE in app.py), so the rule is
+  written once, in SQL, and both this macro and the availability filter use
+  the same definition.
 #}
 {% macro price_status(art) %}
-  {% set status = status_slug(art) | trim %}
   <p class="price">
-    {% if status == "not-for-sale" %}
+    {% if art.status == "not-for-sale" %}
       {# On display only, so no price is shown. #}
       <span class="tag">Not for sale</span>
-    {% elif status == "sold" %}
+    {% elif art.status == "sold" %}
       <span class="tag tag--sold">Sold</span>
     {% else %}
       <span class="price__amount">{{ art.price_cents | usd }}</span>
@@ -102,10 +87,6 @@
       data-year="{{ art.year }}"
       data-medium="{{ art.medium }}"
       data-description="{{ art.description }}"
-      data-category="{{ art.category }}"
-      data-artist-slug="{{ art.artist_slug }}"
-      data-price-cents="{{ art.price_cents }}"
-      data-status="{{ status_slug(art) | trim }}"
       data-image="{{ url_for('static', filename='images/' ~ art.image) }}"
       data-href="{{ url_for('artwork_page', artwork_id=art.id) }}">
     <figure class="mat mat--fixed">

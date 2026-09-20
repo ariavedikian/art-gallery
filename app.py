@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 10 (part 1): the collection can be filtered in the browser.
+Stage 10 (part 2): the collection is filtered in SQL, from the query string.
 
 Every page that shows artworks — the homepage, each artist page and All works
 — fetches rows with SQL and renders them through one shared grid macro. Which
@@ -12,7 +12,7 @@ templates only decide how a work looks.
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, abort, g, render_template
+from flask import Flask, abort, g, render_template, request
 
 app = Flask(__name__)
 
@@ -84,12 +84,34 @@ def query_db(sql, params=(), one=False):
 # cannot silently alter what the templates receive. This string is written by
 # us and never contains user input, so it is safe to paste into a query;
 # VALUES from a visitor never are. See get_artist below.
-_ARTWORK_COLUMNS = """
+# The three availability states, written once as a SQL expression and used
+# twice: to give every artwork a `status` column, and in the WHERE clause when
+# someone filters by availability. The same rule used to live in a Jinja macro
+# as well. Now the database derives it and the templates just read it.
+_STATUS_CASE = """
+    CASE
+        WHEN aw.available_for_purchase = 0 THEN 'not-for-sale'
+        WHEN aw.inventory_quantity = 0     THEN 'sold'
+        ELSE 'for-sale'
+    END
+"""
+
+_ARTWORK_COLUMNS = f"""
     aw.id, aw.title, aw.year, aw.medium, aw.category, aw.description,
     aw.price_cents, aw.available_for_purchase, aw.inventory_quantity,
     aw.is_featured, aw.image, aw.image_width, aw.image_height,
-    ar.name AS artist_name, ar.slug AS artist_slug
+    ar.name AS artist_name, ar.slug AS artist_slug,
+    {_STATUS_CASE} AS status
 """
+
+# The price menu sends values like "100000-300000" or "300000-": cents, low to
+# high, an empty high meaning no ceiling. Keeping the allowed ranges in one
+# dictionary means an unexpected value can simply be ignored.
+PRICE_RANGES = {
+    "0-100000": (0, 100000),
+    "100000-300000": (100000, 300000),
+    "300000-": (300000, None),
+}
 
 
 def get_artists():
@@ -147,18 +169,79 @@ def get_featured_artworks():
     """)
 
 
-def get_all_artworks():
-    """Every artwork in the collection, in the gallery running order.
+def _like_pattern(text):
+    """Wrap text in % wildcards for a LIKE search, escaping any it contains.
 
-    Same columns, same shape, same JOIN as get_featured_artworks. Only the
-    WHERE clause is missing, because this page wants everything.
+    In SQL, % matches anything and _ matches any single character. Without
+    escaping, a visitor searching for % would match every work, and _ would
+    quietly match more than they asked for. ! is declared as the escape
+    character in the query below, so !% means a literal percent sign.
     """
+    escaped = text.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return "%" + escaped + "%"
+
+
+def search_artworks(q="", artist="", category="", status="", price=""):
+    """Artworks matching the filters given. With no filters, all of them.
+
+    The WHERE clause is assembled from the filters that are actually set.
+    Note the split, because it is the whole safety story: the STRUCTURE of the
+    query is built from strings we wrote ourselves, while every VALUE travels
+    separately as a ? parameter. Nothing a visitor typed ever becomes SQL.
+    """
+    clauses = []
+    params = []
+
+    if q:
+        clauses.append("""(
+            aw.title LIKE ? ESCAPE '!' OR
+            aw.medium LIKE ? ESCAPE '!' OR
+            aw.category LIKE ? ESCAPE '!' OR
+            ar.name LIKE ? ESCAPE '!'
+        )""")
+        params.extend([_like_pattern(q)] * 4)
+
+    if artist:
+        clauses.append("ar.slug = ?")
+        params.append(artist)
+
+    if category:
+        clauses.append("aw.category = ?")
+        params.append(category)
+
+    if status:
+        clauses.append(f"{_STATUS_CASE} = ?")
+        params.append(status)
+
+    # Anything not in the menu is ignored rather than trusted. This value came
+    # from a query string, so it can be any text at all.
+    if price in PRICE_RANGES:
+        low, high = PRICE_RANGES[price]
+        clauses.append("aw.price_cents >= ?")
+        params.append(low)
+        if high is not None:
+            clauses.append("aw.price_cents < ?")
+            params.append(high)
+
+    # No filters set means no WHERE clause at all, and the query returns
+    # everything, which is exactly what an unfiltered page wants.
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+
     return query_db(f"""
         SELECT {_ARTWORK_COLUMNS}
         FROM artworks aw
         JOIN artists ar ON ar.id = aw.artist_id
+        {where}
         ORDER BY aw.display_order, aw.id
-    """)
+    """, params)
+
+
+def count_artworks():
+    """How many works exist in total, for the "showing X of Y" line.
+
+    COUNT(*) is answered by the database without sending any rows back.
+    """
+    return query_db("SELECT COUNT(*) AS total FROM artworks", one=True)["total"]
 
 
 def get_categories():
@@ -279,13 +362,26 @@ def artist_page(slug):
 
 @app.route("/gallery")
 def gallery():
-    # Every work is sent to the browser, and the filtering happens there.
-    # That is only reasonable while the collection is small; see the notes
-    # in static/js/filter.js for where the limit is.
+    # request.args is the query string: /gallery?artist=artist-two&q=oil
+    # .get() with a default turns a missing parameter into an empty filter,
+    # so a bare /gallery and a cleared form take the same path.
+    filters = {
+        "q": request.args.get("q", "").strip(),
+        "artist": request.args.get("artist", ""),
+        "category": request.args.get("category", ""),
+        "status": request.args.get("status", ""),
+        "price": request.args.get("price", ""),
+    }
+
+    # The database returns only the matching rows, so the page is as small as
+    # the result. The filters go back to the template as well, so the form can
+    # show what is currently applied.
     return render_template(
         "gallery.html",
-        artworks=get_all_artworks(),
+        artworks=search_artworks(**filters),
         categories=get_categories(),
+        filters=filters,
+        total=count_artworks(),
     )
 
 

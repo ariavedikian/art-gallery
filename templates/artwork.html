@@ -54,12 +54,12 @@
 
           {{ price_status(artwork) }}
 
-          {# Whether a work can be bought is a rule about inventory, so it is
-             decided from the same two stored facts as the price line. #}
+          {# Whether a work can be bought reads the same `status` column the
+             price line does, derived once in SQL. #}
           <div class="purchase">
-            {% if not artwork.available_for_purchase %}
+            {% if artwork.status == "not-for-sale" %}
               <p class="muted small">This work is on display and is not for sale.</p>
-            {% elif artwork.inventory_quantity == 0 %}
+            {% elif artwork.status == "sold" %}
               <p class="muted small">This work has been sold.</p>
             {% else %}
               {# Inert until the cart exists at Stage 11. A disabled button is

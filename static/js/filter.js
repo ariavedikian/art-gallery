@@ -1,144 +1,131 @@
 /*
-  Collection filtering, in the browser
-  ====================================
+  Filter form enhancement
+  =======================
 
-  The server sends every artwork to the All works page. This file hides the
-  cards that do not match the filters, which makes filtering instant: no
-  request, no page reload, no waiting.
+  The filtering itself is gone from this file. It now happens in SQL, and the
+  filters live in the query string:
 
-  WHY THIS IS REASONABLE HERE, AND WHERE IT STOPS BEING SO
+      /gallery?artist=artist-two&category=Print
 
-  It works because the whole collection is already on the page. The moment
-  that stops being true, this approach breaks, and it breaks quietly:
+  That is worth the round trip, because it buys three things the browser-only
+  version could not have:
 
-    * A large collection. Sending 2,000 works to filter down to 12 wastes
-      the visitor's bandwidth and the browser's memory. The page gets slower
-      for everyone, including people who never touch a filter.
-    * Pagination. If the page only holds the first 24 works, this searches
-      24 works and confidently reports "no matches" for a piece that exists.
-      That is the dangerous failure: a wrong answer, not an error.
-    * Sharing. Filters live in memory, not in the URL, so a filtered view
-      cannot be linked, bookmarked or reloaded.
-    * No JavaScript, no filtering. The controls do nothing at all.
+    * a filtered view has a URL, so it can be shared, bookmarked and reloaded
+    * the server sends only matching rows, so the page does not grow with the
+      collection, and it stays correct once there are more works than fit on
+      one page
+    * with JavaScript off, the form still submits and everything works
 
-  The fix for every one of those is to filter in SQL and let the server send
-  only the matching rows. That is part 2 of this stage.
+  All this file does now is press the button for you.
 */
 
 (function () {
   "use strict";
 
   var form = document.getElementById("filters");
-  var grid = document.querySelector(".artwork-grid");
-  if (!form || !grid) {
+  if (!form) {
     return;
   }
 
-  var controls = {
-    q: document.getElementById("filter-q"),
-    artist: document.getElementById("filter-artist"),
-    category: document.getElementById("filter-category"),
-    status: document.getElementById("filter-status"),
-    price: document.getElementById("filter-price")
-  };
+  var submitButton = document.getElementById("filter-submit");
+  var search = document.getElementById("filter-q");
 
-  var countLine = document.getElementById("filter-count");
-  var emptyLine = document.getElementById("filter-empty");
+  // Submitting reloads the page, so remember that we were the ones who did
+  // it. Otherwise arriving from a shared link would steal focus and scroll
+  // the visitor down to the filter bar uninvited.
+  var FOCUS_KEY = "gallery-filter-focus";
 
-  // Build the searchable text once, at load, rather than on every keystroke.
-  // With six works it makes no difference; the habit is what matters.
-  var cards = Array.prototype.slice.call(grid.querySelectorAll(".artwork"));
-  var items = cards.map(function (card) {
-    return {
-      card: card,
-      artist: card.dataset.artistSlug,      // data-artist-slug
-      category: card.dataset.category,
-      status: card.dataset.status,
-      price: Number(card.dataset.priceCents),
-      text: [
-        card.dataset.title,
-        card.dataset.artist,
-        card.dataset.medium,
-        card.dataset.category
-      ].join(" ").toLowerCase()
-    };
-  });
-
-  function matches(item, filters) {
-    // Every filter that is set must pass. An unset filter is not a test.
-    if (filters.q && item.text.indexOf(filters.q) === -1) {
-      return false;
-    }
-    if (filters.artist && item.artist !== filters.artist) {
-      return false;
-    }
-    if (filters.category && item.category !== filters.category) {
-      return false;
-    }
-    if (filters.status && item.status !== filters.status) {
-      return false;
-    }
-    if (filters.price) {
-      // "100000-300000" -> from 100000 to 300000. "300000-" has no ceiling.
-      var bounds = filters.price.split("-");
-      var low = Number(bounds[0]);
-      var high = bounds[1] === "" ? Infinity : Number(bounds[1]);
-      if (item.price < low || item.price > high) {
-        return false;
+  function remember(value) {
+    // Private browsing and blocked storage make this throw rather than fail
+    // quietly, and a focus nicety is never worth breaking the page over.
+    try {
+      if (value) {
+        window.sessionStorage.setItem(FOCUS_KEY, "1");
+      } else {
+        window.sessionStorage.removeItem(FOCUS_KEY);
       }
+    } catch (error) {
+      /* storage unavailable: carry on without it */
     }
-    return true;
   }
 
-  function apply() {
-    var filters = {
-      // Trimmed and lowercased once here, not inside the loop.
-      q: controls.q.value.trim().toLowerCase(),
-      artist: controls.artist.value,
-      category: controls.category.value,
-      status: controls.status.value,
-      price: controls.price.value
-    };
+  function wasOurSubmit() {
+    try {
+      return window.sessionStorage.getItem(FOCUS_KEY) === "1";
+    } catch (error) {
+      return false;
+    }
+  }
 
-    var shown = 0;
-    items.forEach(function (item) {
-      var visible = matches(item, filters);
-      // The hidden property is the honest way to hide an element: it is
-      // removed from the page for screen readers and keyboard users too,
-      // which visibility or opacity would not do.
-      item.card.hidden = !visible;
-      if (visible) {
-        shown += 1;
+  function pruneEmptyFields() {
+    // A form submits every named control, so unset filters would litter the
+    // URL with q=&category=&status=&price=. A disabled control is not
+    // submitted at all, so switching the empty ones off on the way out
+    // leaves a clean, shareable ?artist=artist-two.
+    //
+    // The server ignores empty values either way, so this is cosmetic, and
+    // it is exactly the kind of polish that belongs in an enhancement: with
+    // JavaScript off the URL is uglier and the results are identical.
+    Array.prototype.forEach.call(form.elements, function (field) {
+      if (field.name && field.value === "") {
+        field.disabled = true;
       }
     });
-
-    countLine.textContent = shown === items.length
-      ? shown + (shown === 1 ? " work" : " works")
-      : "Showing " + shown + " of " + items.length + " works";
-
-    emptyLine.hidden = shown !== 0;
   }
 
-  // "input" fires on every keystroke, including paste and clearing the field.
-  // No debounce is needed: nothing leaves the browser, so the only cost is a
-  // loop over six items. Once this becomes a request per keystroke, that
-  // changes completely.
-  controls.q.addEventListener("input", apply);
+  function submit() {
+    remember(true);
+    pruneEmptyFields();
+    // requestSubmit behaves like a real button press, including validation.
+    // submit() skips that, so it is only the fallback for older browsers.
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+    } else {
+      form.submit();
+    }
+  }
 
-  ["artist", "category", "status", "price"].forEach(function (name) {
-    controls[name].addEventListener("change", apply);
+  // With JavaScript running, the Apply button is redundant. It stays in the
+  // HTML because it is the whole no-JavaScript path; it is only hidden.
+  if (submitButton) {
+    submitButton.hidden = true;
+  }
+
+  // A menu choice is a finished decision, so submit straight away.
+  Array.prototype.forEach.call(form.querySelectorAll("select"), function (select) {
+    select.addEventListener("change", submit);
   });
 
-  // A type="reset" button restores the form defaults, but the browser does
-  // that AFTER this event fires, so re-filter on the next tick.
+  if (search) {
+    // Typing is different: each keystroke could be a request and a query.
+    // Typing "lithograph" would be eleven of each, ten of them already stale
+    // before they came back — and replies can arrive out of order, so an
+    // older result can overwrite a newer one.
+    //
+    // Debouncing: restart a 400ms timer on every keystroke and only submit
+    // when it finally runs out. One request per pause in typing, not one per
+    // letter. This is the cost of moving the work to the server, and the
+    // reason the browser-only version needed nothing of the sort.
+    var timer = null;
+
+    search.addEventListener("input", function () {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(submit, 400);
+    });
+
+    // After our own submit, put the caret back at the end of the search box
+    // so typing can continue naturally across the reload.
+    if (wasOurSubmit()) {
+      remember(false);
+      if (search.value) {
+        search.focus();
+        search.setSelectionRange(search.value.length, search.value.length);
+      }
+    }
+  }
+
+  // Leaving the page any other way should not arm the focus restore.
   form.addEventListener("reset", function () {
-    window.setTimeout(apply, 0);
-  });
-
-  // Nothing is submitted anywhere: there is no server endpoint behind this
-  // form yet. Pressing Enter in the search box would otherwise reload the
-  // page and appear to lose the filters.
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
+    remember(false);
   });
 })();
