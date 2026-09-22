@@ -148,6 +148,15 @@ styling, cluttered layouts.
   a work must never rewrite a receipt. `artwork_id` is kept only for the link.
 - **Mock payment is labelled unmistakably**, in the form and on the receipt,
   and is selectable approve/decline so the failure path can be tested.
+- **Tests build their own throwaway database** from `schema.sql` and
+  `seed.sql` in a temp folder and point `app.DATABASE_PATH` at it. A test that
+  can destroy the database you are working on is worse than no test.
+- **Tests are plain scripts** run with `python tests/<name>.py`, stdlib only,
+  exiting non-zero on failure. No pytest until there are enough tests to earn
+  the dependency.
+- **Concurrency is tested with threads, never by hand.** Clicking through the
+  site does one thing at a time and can never produce the situation the
+  checkout transaction exists for. See `tests/test_checkout_race.py`.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -174,6 +183,12 @@ python app.py          # http://127.0.0.1:5000
 `venv/` is disposable and gitignored; rebuild with
 `python -m venv venv` then `pip install -r requirements.txt`.
 
+Run the tests with:
+
+```powershell
+python tests/test_checkout_race.py
+```
+
 ## Layout
 
 ```
@@ -186,6 +201,7 @@ art-gallery/
 │                  #   checkout, order, 404, macros
 ├── static/           # css/style.css, js/{lightbox,filter}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
+├── tests/            # plain runnable scripts, stdlib only (no pytest yet)
 └── database/         # schema.sql (artists, artworks, orders, order_items),
                   #   seed.sql, art_gallery.db (generated)
 ```

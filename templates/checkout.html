@@ -69,7 +69,11 @@
             {% if errors.customer_email %}
               <p class="field__error small" id="error-customer_email">{{ errors.customer_email }}</p>
             {% endif %}
-            <p class="field__hint muted small">Where the confirmation is sent.</p>
+            {# Honest about what this field does today: it is stored and shown
+               back, and nothing is sent. The gallery has no mail code at all.
+               Stage 14 decides whether Stripe's own receipts are enough. #}
+            <p class="field__hint muted small">Stored with your order. The
+              gallery does not send email yet.</p>
           </div>
 
           <div class="field{% if errors.shipping_address %} field--error{% endif %}">
