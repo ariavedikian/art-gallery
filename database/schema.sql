@@ -21,6 +21,8 @@ PRAGMA foreign_keys = ON;
 -- Drop in reverse order of dependency: artworks points at artists, so it has
 -- to go first. Dropping artists while artworks still referenced it would be
 -- exactly the orphaned-reference problem these tables exist to prevent.
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS artworks;
 DROP TABLE IF EXISTS artists;
 
@@ -114,3 +116,84 @@ CREATE TABLE artworks (
 -- for columns you actually search on. artist_id is looked up on every
 -- artist page, so it earns one.
 CREATE INDEX idx_artworks_artist_id ON artworks (artist_id);
+
+
+-- --- orders ------------------------------------------------------------------
+-- One row per completed purchase. Written only inside a transaction, by
+-- place_order() in app.py, and never updated afterwards by the checkout flow:
+-- an order is a record of something that happened.
+CREATE TABLE orders (
+    id         INTEGER PRIMARY KEY,
+
+    -- The public identifier, used in the confirmation URL.
+    --
+    -- NOT the id. Ids are sequential, so /order/3 invites anyone to try
+    -- /order/2 and read a stranger's name, email and address. A random
+    -- reference is not a password — it is the only thing standing between a
+    -- curious visitor and someone else's order, so it has to be long enough
+    -- that guessing is hopeless. Generated with secrets.token_urlsafe.
+    reference  TEXT NOT NULL UNIQUE,
+
+    -- Who bought it and where it goes. Deliberately plain text: this is a
+    -- shipping address, not a structured postal database, and pretending
+    -- otherwise breaks the moment someone outside your assumed country buys
+    -- something.
+    customer_name    TEXT NOT NULL,
+    customer_email   TEXT NOT NULL,
+    shipping_address TEXT NOT NULL,
+
+    -- The total as it was charged. Recomputing it later from order_items
+    -- would give the same answer today and possibly a different one after a
+    -- refund, a correction or a rounding-rule change. Store what happened.
+    subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents >= 0),
+
+    -- 'mock' until Stage 14 introduces Stripe. Named rather than assumed, so
+    -- a real payment and a fake one can never be confused in the data.
+    payment_method TEXT NOT NULL,
+
+    -- The order lifecycle proper arrives at Stage 13/14. For now a mock
+    -- payment that succeeded produces 'paid', and nothing else is written.
+    status     TEXT NOT NULL DEFAULT 'paid',
+
+    -- SQLite has no DATE type, so an ISO 8601 string in UTC. It sorts
+    -- correctly as text, which is exactly why that format was chosen.
+    placed_at  TEXT NOT NULL
+);
+
+
+-- --- order_items -------------------------------------------------------------
+-- The lines of an order: what was bought, how many, and at what price.
+CREATE TABLE order_items (
+    id       INTEGER PRIMARY KEY,
+
+    -- ON DELETE CASCADE: deleting an order deletes its lines. Unlike an
+    -- artist, an order's lines have no meaning without the order, so there is
+    -- nothing to protect by refusing.
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+
+    -- ON DELETE RESTRICT: refuse to delete an artwork that has been sold.
+    -- A sale is a fact about the past and must not be quietly erased.
+    artwork_id INTEGER NOT NULL REFERENCES artworks(id) ON DELETE RESTRICT,
+
+    -- A SNAPSHOT, not a live reference.
+    --
+    -- The artwork_id above says WHICH work was bought. These columns say what
+    -- it cost and what it was called AT THAT MOMENT. Without them, raising a
+    -- price next year would silently rewrite every receipt ever issued, and a
+    -- retitled work would make an old order describe something the buyer
+    -- never saw.
+    --
+    -- The rule: a record of the past stores values, not pointers to a present
+    -- that keeps moving. Stage 13 comes back to this.
+    title_at_purchase  TEXT NOT NULL,
+    artist_at_purchase TEXT NOT NULL,
+    unit_price_cents   INTEGER NOT NULL CHECK (unit_price_cents >= 0),
+
+    quantity INTEGER NOT NULL CHECK (quantity > 0)
+);
+
+
+-- Every confirmation page looks an order up by reference, and every order page
+-- then fetches its lines by order_id. Both earn an index. (reference already
+-- has one: UNIQUE creates an index to enforce itself.)
+CREATE INDEX idx_order_items_order_id ON order_items (order_id);

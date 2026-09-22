@@ -124,11 +124,11 @@
           <p class="muted small">Shipping, insurance and any applicable taxes
             are arranged separately.</p>
 
-          {# Inert until Stage 12. A disabled button is honest: it shows where
-             the journey goes without pretending it works yet. #}
-          <button class="button" type="button" disabled>Proceed to checkout</button>
-          <p class="muted small">Checkout opens at the next stage. Nothing in
-            this cart is reserved until a purchase is completed.</p>
+          {# A link, not a form: /checkout is a page you fetch and read, and
+             nothing changes until its own form is submitted. #}
+          <p><a class="button" href="{{ url_for('checkout') }}">Proceed to checkout</a></p>
+          <p class="muted small">Nothing in this cart is reserved until the
+            purchase is completed.</p>
         </div>
 
       {% endif %}

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{#
+  Checkout.
+
+  The form posts back to its own URL. On success the route redirects to the
+  confirmation page; on a validation error it re-renders THIS template with
+  `errors` filled in and `values` holding everything already typed, so nobody
+  has to write their address twice.
+#}
+
+{% block title %}Checkout — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li><a href="{{ url_for('cart') }}">Your cart</a></li>
+        <li aria-current="page">Checkout</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Acquisition</p>
+      <h1 class="display">Checkout</h1>
+
+      <div class="checkout">
+
+        <form class="checkout__form" method="post" action="{{ url_for('checkout_submit') }}"
+              {# novalidate is deliberate: it turns the browser's own checks off
+                 so the SERVER's validation is what you actually see while
+                 testing. The server is the only validation that counts, since
+                 a hand-written POST never runs the browser's. #}
+              novalidate>
+
+          <h2 class="section-title">Your details</h2>
+
+          {#
+            Each field follows the same shape: a label tied to the input by
+            for/id, the value that was typed, and an error message when there
+            is one.
+
+            aria-invalid and aria-describedby are what make the error reach a
+            screen reader. Without them the red text is visible to sighted
+            users only, and someone listening to the page is simply told the
+            form did not submit.
+          #}
+          <div class="field{% if errors.customer_name %} field--error{% endif %}">
+            <label for="customer_name">Name</label>
+            <input type="text" id="customer_name" name="customer_name"
+                   value="{{ values.customer_name }}" autocomplete="name"
+                   {% if errors.customer_name %}aria-invalid="true"
+                   aria-describedby="error-customer_name"{% endif %}>
+            {% if errors.customer_name %}
+              <p class="field__error small" id="error-customer_name">{{ errors.customer_name }}</p>
+            {% endif %}
+          </div>
+
+          <div class="field{% if errors.customer_email %} field--error{% endif %}">
+            <label for="customer_email">Email</label>
+            <input type="email" id="customer_email" name="customer_email"
+                   value="{{ values.customer_email }}" autocomplete="email"
+                   {% if errors.customer_email %}aria-invalid="true"
+                   aria-describedby="error-customer_email"{% endif %}>
+            {% if errors.customer_email %}
+              <p class="field__error small" id="error-customer_email">{{ errors.customer_email }}</p>
+            {% endif %}
+            <p class="field__hint muted small">Where the confirmation is sent.</p>
+          </div>
+
+          <div class="field{% if errors.shipping_address %} field--error{% endif %}">
+            <label for="shipping_address">Delivery address</label>
+            <textarea id="shipping_address" name="shipping_address" rows="5"
+                      autocomplete="street-address"
+                      {% if errors.shipping_address %}aria-invalid="true"
+                      aria-describedby="error-shipping_address"{% endif %}>{{ values.shipping_address }}</textarea>
+            {% if errors.shipping_address %}
+              <p class="field__error small" id="error-shipping_address">{{ errors.shipping_address }}</p>
+            {% endif %}
+          </div>
+
+          {#
+            The mock payment. Labelled loudly and unmistakably, because a
+            payment step that LOOKS real and is not is the single most
+            dangerous thing a half-built shop can contain.
+          #}
+          <div class="mock-payment">
+            <p class="mock-payment__banner">Mock payment — no card is taken and
+              no money moves. Real payments arrive at Stage 14.</p>
+
+            <div class="field">
+              <label for="mock_payment">Simulated payment result</label>
+              <select id="mock_payment" name="mock_payment">
+                <option value="approve">Approve</option>
+                <option value="decline">Decline</option>
+              </select>
+              <p class="field__hint muted small">Choosing Decline rolls the whole
+                order back, so you can watch the failure path work.</p>
+            </div>
+          </div>
+
+          <button class="button" type="submit">Complete purchase (mock)</button>
+        </form>
+
+        {# A read-only recap, so nobody has to go back to the cart to remember
+           what they are buying. The numbers come from the same functions the
+           cart page used; this template does no arithmetic. #}
+        <aside class="checkout__summary" aria-labelledby="summary-heading">
+          <h2 class="section-title" id="summary-heading">Your order</h2>
+
+          <ul class="order-lines">
+            {% for line in lines %}
+              <li class="order-line">
+                <div>
+                  <p class="work-title">{{ line.artwork.title }}</p>
+                  <p class="muted small">{{ line.artwork.artist_name }}</p>
+                  {% if line.quantity > 1 %}
+                    <p class="muted small">{{ line.quantity }} &times; {{ line.artwork.price_cents | usd }}</p>
+                  {% endif %}
+                </div>
+                <p class="price__amount">{{ line.subtotal_cents | usd }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+
+          <p class="cart-summary__row">
+            <span>Subtotal</span>
+            <span class="price__amount">{{ subtotal | usd }}</span>
+          </p>
+          <p class="muted small">Shipping, insurance and any applicable taxes
+            are arranged separately.</p>
+          <p><a class="button button--quiet button--small" href="{{ url_for('cart') }}">Edit cart</a></p>
+        </aside>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

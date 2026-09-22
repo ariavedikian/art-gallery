@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 11: the shopping cart.
+Stage 12: checkout.
 
 HTTP is stateless — two requests from the same visitor arrive as strangers —
 so a cart has to be stored somewhere and handed back with every request. This
@@ -11,10 +11,16 @@ SECRET_KEY so it cannot be edited without the signature failing.
 The cookie holds one thing: {artwork_id: quantity}. Titles, prices and
 availability are read from the database on every request, so a price can never
 arrive from the client.
+
+Checkout turns that cart into an order inside a single transaction: the
+inventory is claimed and the order is written together, or neither happens.
+The payment step is a clearly-labelled MOCK until Stage 14.
 """
 
 import os
+import secrets
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
@@ -53,7 +59,16 @@ def get_db():
                 f"No database at {DATABASE_PATH}. Run: python init_db.py"
             )
 
-        g.db = sqlite3.connect(DATABASE_PATH)
+        # isolation_level=None turns OFF Python's habit of opening and
+        # committing transactions for you. By default the sqlite3 module
+        # silently BEGINs before an INSERT or UPDATE — but not before a
+        # SELECT — and commits at times that are easy to get wrong.
+        #
+        # Checkout needs a SELECT and several writes inside ONE transaction
+        # whose boundaries we chose, so from here on transactions are explicit:
+        # see place_order(). Every other query in this file is a plain read and
+        # is unaffected.
+        g.db = sqlite3.connect(DATABASE_PATH, isolation_level=None)
 
         # Without this, a row is a plain tuple: row[0], row[1], ...
         # sqlite3.Row allows row["title"], which is exactly what the templates
@@ -446,6 +461,190 @@ def allowed_quantity(artwork):
     return min(artwork["inventory_quantity"], MAX_PER_LINE)
 
 
+# --- Checkout ----------------------------------------------------------------
+
+class OutOfStock(Exception):
+    """Raised inside the checkout transaction when a work is no longer there.
+
+    A custom exception type, rather than a returned flag, because it has to
+    travel up out of the middle of a transaction and force a rollback. It
+    carries the work it failed on, so the message can name it.
+    """
+
+    def __init__(self, artwork):
+        super().__init__(f"{artwork['title']} is no longer available")
+        self.artwork = artwork
+
+
+class PaymentDeclined(Exception):
+    """Raised when the mock payment step is told to decline."""
+
+
+def validate_checkout(form):
+    """Check the submitted details. Returns (values, errors).
+
+    Both are returned, always. `values` is what the visitor typed, stripped of
+    surrounding whitespace, so the form can be re-rendered with their work
+    still in it. `errors` is empty when everything is fine.
+
+    Validation happens HERE, on the server, whatever the browser did. The
+    required= and type=email attributes in the form are a convenience for
+    people using a browser; they are simply absent from a hand-written POST,
+    and a check that can be skipped is not a check.
+    """
+    values = {
+        "customer_name": form.get("customer_name", "").strip(),
+        "customer_email": form.get("customer_email", "").strip(),
+        "shipping_address": form.get("shipping_address", "").strip(),
+    }
+    errors = {}
+
+    if not values["customer_name"]:
+        errors["customer_name"] = "Please give a name for the order."
+    elif len(values["customer_name"]) > 120:
+        errors["customer_name"] = "That name is too long."
+
+    email = values["customer_email"]
+    if not email:
+        errors["customer_email"] = "Please give an email address."
+    elif email.count("@") != 1 or " " in email or not all(email.split("@")):
+        # Deliberately loose. No regular expression correctly matches every
+        # valid email address while rejecting every invalid one, and the ones
+        # that try reject real addresses. The only true test of an address is
+        # sending mail to it, which is Stage 14 business. This catches typing
+        # into the wrong box, and stops there.
+        errors["customer_email"] = "That does not look like an email address."
+
+    if not values["shipping_address"]:
+        errors["shipping_address"] = "Please give a delivery address."
+
+    return values, errors
+
+
+def place_order(lines, values, payment_approved):
+    """Write the order and claim the stock, as one indivisible operation.
+
+    This is the only function in the app that writes to the database, and the
+    only one that manages a transaction. Everything between BEGIN and COMMIT
+    either all happens or none of it does.
+
+    Raises OutOfStock if a work was taken while the visitor was typing, or
+    PaymentDeclined if the mock payment failed. Either way the ROLLBACK in the
+    except block undoes every change made so far, so a failed checkout leaves
+    the database exactly as it was.
+    """
+    db = get_db()
+
+    # IMMEDIATE takes the write lock now, rather than at the first write. Two
+    # checkouts for the last copy of one work therefore queue up here, and the
+    # second runs its checks AFTER the first has committed, seeing the
+    # decremented inventory rather than the stale one.
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        for line in lines:
+            artwork = line["artwork"]
+
+            # The check and the claim, in one statement.
+            #
+            # The WHERE decides whether it is allowed; the SET does it. No
+            # other connection can act between them, because there is no
+            # between: it is a single operation. The two-statement version --
+            # SELECT the quantity, decide in Python, then UPDATE -- has a gap
+            # in the middle, and two visitors buying the last copy of a work
+            # both read "1 available" inside that gap.
+            cursor = db.execute("""
+                UPDATE artworks
+                   SET inventory_quantity = inventory_quantity - ?
+                 WHERE id = ?
+                   AND available_for_purchase = 1
+                   AND inventory_quantity >= ?
+            """, (line["quantity"], artwork["id"], line["quantity"]))
+
+            # rowcount is how many rows the UPDATE actually changed. 0 means
+            # the WHERE matched nothing: someone else got there first.
+            if cursor.rowcount != 1:
+                raise OutOfStock(artwork)
+
+        subtotal = cart_subtotal(lines)
+
+        # The mock payment sits INSIDE the transaction, so a decline rolls the
+        # inventory back with everything else. Stage 14 replaces this with
+        # Stripe and will have to move it, because a real payment cannot be
+        # undone by a ROLLBACK. That is a Stage 14 problem, and the simple
+        # version is worth seeing first.
+        if not payment_approved:
+            raise PaymentDeclined()
+
+        # token_urlsafe(16) is 16 random BYTES, not 16 characters: about
+        # 3.4e38 possibilities. Guessing one is not a strategy.
+        reference = secrets.token_urlsafe(16)
+
+        cursor = db.execute("""
+            INSERT INTO orders (reference, customer_name, customer_email,
+                                shipping_address, subtotal_cents,
+                                payment_method, status, placed_at)
+            VALUES (?, ?, ?, ?, ?, 'mock', 'paid', ?)
+        """, (reference, values["customer_name"], values["customer_email"],
+              values["shipping_address"], subtotal,
+              datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+        order_id = cursor.lastrowid
+
+        for line in lines:
+            artwork = line["artwork"]
+
+            # The snapshot. artwork_id records WHICH work was bought; these
+            # columns record what it was called and what it cost at this
+            # moment. Repricing a work next year must not rewrite a receipt
+            # issued today.
+            db.execute("""
+                INSERT INTO order_items (order_id, artwork_id, title_at_purchase,
+                                         artist_at_purchase, unit_price_cents,
+                                         quantity)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (order_id, artwork["id"], artwork["title"],
+                  artwork["artist_name"], artwork["price_cents"],
+                  line["quantity"]))
+
+        db.execute("COMMIT")
+
+    except Exception:
+        # Undo everything: the decremented inventory, the order row, the
+        # lines. The database returns to exactly the state it was in before
+        # BEGIN, and the exception then carries on up to the route.
+        db.execute("ROLLBACK")
+        raise
+
+    return reference
+
+
+def get_order(reference):
+    """One order by its public reference, or None."""
+    return query_db("""
+        SELECT id, reference, customer_name, customer_email, shipping_address,
+               subtotal_cents, payment_method, status, placed_at
+          FROM orders WHERE reference = ?
+    """, (reference,), one=True)
+
+
+def get_order_items(order_id):
+    """The lines of an order, read from the SNAPSHOT columns.
+
+    Nothing here joins to artworks for a title or a price. Those columns are
+    what the buyer was shown and charged, and they are the only honest source
+    for a receipt. artwork_id is carried only for the link, so a reader can go
+    and look at the work as it stands today.
+    """
+    return query_db("""
+        SELECT oi.artwork_id, oi.title_at_purchase, oi.artist_at_purchase,
+               oi.unit_price_cents, oi.quantity,
+               oi.unit_price_cents * oi.quantity AS line_total_cents
+          FROM order_items oi
+         WHERE oi.order_id = ?
+         ORDER BY oi.id
+    """, (order_id,))
+
+
 # --- Template helpers --------------------------------------------------------
 
 @app.template_filter("usd")
@@ -455,6 +654,18 @@ def usd(cents):
     Formatting is presentation, so it belongs here rather than in the data."""
     return "${:,.0f}".format(cents / 100)
 
+
+@app.template_filter("placed")
+def placed(iso_text):
+    """Turn "2026-09-22T02:12:53+00:00" into "22 September 2026, 02:12 UTC".
+
+    The database stores ISO 8601 because it is unambiguous and sorts correctly
+    as text. That is the right thing to STORE and the wrong thing to show
+    somebody. Same division as the usd filter: the data keeps the precise
+    value, the filter decides how a human reads it.
+    """
+    moment = datetime.fromisoformat(iso_text)
+    return moment.strftime("%d %B %Y, %H:%M UTC").lstrip("0")
 
 @app.context_processor
 def inject_site_globals():
@@ -656,6 +867,114 @@ def cart_remove():
     return redirect(url_for("cart"))
 
 
+# --- Checkout routes ---------------------------------------------------------
+
+def _checkout_blocker(lines):
+    """Why this cart cannot be checked out, or None if it can.
+
+    Called by both checkout routes. The GET needs it to decide whether to show
+    the form at all; the POST needs it because nothing stops someone posting
+    to /checkout without ever loading the page. Written once so the two can
+    never disagree.
+    """
+    if not lines:
+        return "Your cart is empty."
+    if any(line["issue"] for line in lines):
+        return "Some works in your cart are unavailable. Please review it first."
+    return None
+
+
+@app.get("/checkout")
+def checkout():
+    lines = get_cart_lines()
+
+    blocker = _checkout_blocker(lines)
+    if blocker:
+        flash(blocker, "notice")
+        return redirect(url_for("cart"))
+
+    return render_template(
+        "checkout.html",
+        lines=lines,
+        subtotal=cart_subtotal(lines),
+        values={"customer_name": "", "customer_email": "", "shipping_address": ""},
+        errors={},
+    )
+
+
+@app.post("/checkout")
+def checkout_submit():
+    """Validate, take the mock payment, and place the order.
+
+    Note the two different endings. A REJECTED form re-renders in place, with
+    the errors and everything already typed: redirecting would throw that
+    typing away. A SUCCESSFUL order redirects, so a reload cannot place a
+    second one. Redirect on success, re-render on failure.
+    """
+    lines = get_cart_lines()
+
+    blocker = _checkout_blocker(lines)
+    if blocker:
+        flash(blocker, "notice")
+        return redirect(url_for("cart"))
+
+    values, errors = validate_checkout(request.form)
+
+    if errors:
+        # 400, not 200. The request was bad, and the status code says so --
+        # the same conviction as returning 404 rather than a 200 page that
+        # says "not found".
+        return render_template(
+            "checkout.html",
+            lines=lines,
+            subtotal=cart_subtotal(lines),
+            values=values,
+            errors=errors,
+        ), 400
+
+    # The MOCK payment. A dropdown on the form decides the outcome, because
+    # there is no payment provider to ask yet and a failure path that cannot
+    # be tested is a failure path that does not work. Stage 14 replaces this
+    # with a real Stripe call.
+    payment_approved = request.form.get("mock_payment") != "decline"
+
+    try:
+        reference = place_order(lines, values, payment_approved)
+    except OutOfStock as gone:
+        # Somebody bought it while this visitor was typing. The transaction
+        # rolled back, so nothing was sold and no stock was taken.
+        flash(f"{gone.artwork['title']} by {gone.artwork['artist_name']} sold "
+              f"while you were checking out. Your cart has not been charged.",
+              "error")
+        return redirect(url_for("cart"))
+    except PaymentDeclined:
+        flash("The mock payment was declined. Nothing has been charged and "
+              "your cart is unchanged.", "error")
+        return redirect(url_for("checkout"))
+
+    # The order exists, so the cart has done its job.
+    session.pop(CART_KEY, None)
+
+    return redirect(url_for("order_page", reference=reference))
+
+
+@app.get("/order/<reference>")
+def order_page(reference):
+    """The confirmation page, found by the random reference rather than by id.
+
+    There is no login yet, so this URL is the only thing protecting the name,
+    email and address on it. That is why the reference is random: /order/3
+    would invite anyone to try /order/2.
+    """
+    order = get_order(reference)
+
+    if order is None:
+        abort(404)
+
+    return render_template("order.html", order=order,
+                           items=get_order_items(order["id"]))
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -663,7 +982,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 11}
+    return {"status": "ok", "stage": 12}
 
 
 # --- Error handlers ----------------------------------------------------------

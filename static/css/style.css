@@ -701,7 +701,140 @@ a.feature__media:hover img { transform: scale(1.03); }
 }
 
 
-/* --- 18. Lightbox ---------------------------------------------------------- */
+/* --- 18. Checkout and orders ------------------------------------------------ */
+
+/* The form leads, the summary sits beside it. Same proportions as the artwork
+   detail page, so the site keeps one idea of what a two-column page is. */
+.checkout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: var(--space-5);
+  align-items: start;
+  margin-top: var(--space-4);
+}
+
+.checkout__form > * + * { margin-top: var(--space-3); }
+.checkout__form .section-title { margin-bottom: var(--space-3); }
+
+.checkout__summary {
+  padding: var(--space-3);
+  background: var(--paper-warm);
+  border: 1px solid var(--line);
+}
+
+.checkout__summary > * + * { margin-top: var(--space-2); }
+.checkout__summary .section-title { margin-bottom: var(--space-2); }
+
+/* --- form fields --- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 34rem;
+}
+
+.field label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font-family: inherit;
+  font-size: 0.9375rem;
+  padding: 0.7em 0.8em;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.field textarea { resize: vertical; }
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The error is marked by a border AND a message, never by colour alone:
+   colour is invisible to a screen reader and unreliable for a reader who
+   cannot distinguish it. aria-invalid in the markup does the rest. */
+.field--error input,
+.field--error textarea { border-color: var(--accent); }
+
+.field__error { color: var(--accent); }
+.field__hint { margin-top: 0.1rem; }
+
+/* --- the mock payment block --- */
+
+/* Deliberately the loudest thing on the page. A payment step that looks real
+   and is not is the most dangerous thing a half-built shop can contain. */
+.mock-payment {
+  padding: var(--space-3);
+  border: 1px dashed var(--accent);
+}
+
+.mock-payment > * + * { margin-top: var(--space-2); }
+
+.mock-payment__banner {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent);
+  max-width: var(--measure);
+}
+
+/* --- order lines, shared by the checkout summary and the receipt --- */
+
+.order-lines {
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.order-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.order-line .work-title { font-size: 1rem; }
+.order-line a { color: inherit; text-decoration: none; }
+.order-line a:hover { text-decoration: underline; }
+
+/* --- the confirmation page --- */
+
+.order {
+  display: grid;
+  grid-template-columns: 20rem minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  margin-top: var(--space-4);
+}
+
+.order__meta { margin-top: 0; }
+
+/* white-space: pre-line keeps the line breaks the buyer typed. An address is
+   written in lines and collapsing them into one is simply wrong. */
+.order__address { white-space: pre-line; }
+
+.order__reference {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  word-break: break-all;
+}
+
+.order__items > * + * { margin-top: var(--space-2); }
+
+
+/* --- 19. Lightbox ---------------------------------------------------------- */
 
 /* A <dialog> is hidden until showModal() opens it, then sits in the browser
    top layer above every other element, with ::backdrop dimming the page. */
@@ -801,7 +934,7 @@ a.feature__media:hover img { transform: scale(1.03); }
   outline-offset: 3px;
 }
 
-/* --- 19. Footer ------------------------------------------------------------- */
+/* --- 20. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -811,7 +944,7 @@ a.feature__media:hover img { transform: scale(1.03); }
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 20. Responsive --------------------------------------------------------- */
+/* --- 21. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */
@@ -837,6 +970,13 @@ a.feature__media:hover img { transform: scale(1.03); }
   .spotlight__figure { padding: var(--space-3); }
 
   .site-header__inner { gap: var(--space-2); }
+
+  .checkout,
+  .order {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
 
   /* The money column has nowhere to go on a narrow screen, so it drops under
      the details and aligns left with everything else. */

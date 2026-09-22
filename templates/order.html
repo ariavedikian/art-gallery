@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{#
+  The confirmation, and for now the receipt.
+
+  Every figure on this page comes from the orders and order_items rows, never
+  from a live join to artworks. That is the point of the snapshot columns: if
+  a work is repriced or retitled tomorrow, this page still says what was
+  actually bought and charged today.
+#}
+
+{% block title %}Order {{ order.reference }} — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Confirmed</p>
+      <h1 class="display">Thank you</h1>
+
+      <p class="lead">Your order has been recorded. A reference is below —
+        keep it, as it is the only way back to this page.</p>
+
+      <p class="mock-payment__banner">Mock order. No payment was taken and
+        nothing will be shipped. Real payments arrive at Stage 14.</p>
+
+      <div class="order">
+
+        <dl class="details order__meta">
+          <div>
+            <dt>Reference</dt>
+            {# Monospaced, so an O and a 0 can be told apart when it is read
+               aloud or copied by hand. #}
+            <dd><code class="order__reference">{{ order.reference }}</code></dd>
+          </div>
+          <div><dt>Placed</dt><dd>{{ order.placed_at | placed }}</dd></div>
+          <div><dt>Status</dt><dd>{{ order.status }}</dd></div>
+          <div><dt>Payment</dt><dd>{{ order.payment_method }}</dd></div>
+          <div><dt>Name</dt><dd>{{ order.customer_name }}</dd></div>
+          <div><dt>Email</dt><dd>{{ order.customer_email }}</dd></div>
+          <div>
+            <dt>Delivery</dt>
+            {# The address was typed as several lines, and white-space: pre-line
+               in the CSS keeps them. Jinja escapes the text either way. #}
+            <dd class="order__address">{{ order.shipping_address }}</dd>
+          </div>
+        </dl>
+
+        <div class="order__items">
+          <h2 class="section-title">What you bought</h2>
+
+          <ul class="order-lines">
+            {% for item in items %}
+              <li class="order-line">
+                <div>
+                  {# The title stored on the order line, not the artwork's
+                     title today. The link goes to the work as it stands now,
+                     which is a different question and a fair one to ask. #}
+                  <p class="work-title">
+                    <a href="{{ url_for('artwork_page', artwork_id=item.artwork_id) }}">{{ item.title_at_purchase }}</a>
+                  </p>
+                  <p class="muted small">{{ item.artist_at_purchase }}</p>
+                  {% if item.quantity > 1 %}
+                    <p class="muted small">{{ item.quantity }} &times; {{ item.unit_price_cents | usd }}</p>
+                  {% endif %}
+                </div>
+                <p class="price__amount">{{ item.line_total_cents | usd }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+
+          <p class="cart-summary__row">
+            <span>Total</span>
+            <span class="price__amount">{{ order.subtotal_cents | usd }}</span>
+          </p>
+
+          <p><a class="button" href="{{ url_for('gallery') }}">Back to the collection</a></p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

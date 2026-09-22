@@ -127,6 +127,27 @@ styling, cluttered layouts.
   out of the subtotal. The visitor decides what to do about it.
 - **`SECRET_KEY` comes from `ART_GALLERY_SECRET_KEY`**, with a dev fallback so
   the app runs out of the box. Stage 20 revisits this properly.
+- **Transactions are explicit.** The connection is opened with
+  `isolation_level=None`, so Python never opens or commits one behind your
+  back. `place_order()` is the only writer and manages its own
+  `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`.
+- **Check and claim in one statement.** Inventory is taken with
+  `UPDATE ... SET quantity = quantity - ? WHERE id = ? AND quantity >= ?`,
+  then `cursor.rowcount` says whether it worked. SELECT-then-decide-then-UPDATE
+  has a gap in the middle, and two buyers fit inside it.
+- **Redirect on success, re-render on failure.** A rejected form comes back
+  with its errors and everything already typed, and a 400 status. Only a
+  successful write redirects.
+- **A bad request is a 400**, the same conviction as 404 for not found.
+- **Validation is server-side.** `novalidate` is on the checkout form on
+  purpose, so the server's checks are what you see while testing.
+- **Public identifiers are random, not sequential.** An order is found by
+  `secrets.token_urlsafe(16)`, because `/order/3` invites `/order/2`.
+- **A record of the past stores values, not pointers.** `order_items` keeps
+  `title_at_purchase`, `artist_at_purchase` and `unit_price_cents`; repricing
+  a work must never rewrite a receipt. `artwork_id` is kept only for the link.
+- **Mock payment is labelled unmistakably**, in the form and on the receipt,
+  and is selectable approve/decline so the failure path can be tested.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -161,10 +182,12 @@ art-gallery/
 ├── requirements.txt  # pinned dependencies
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
-├── templates/        # base, index, gallery, artist, artwork, cart, 404, macros
+├── templates/        # base, index, gallery, artist, artwork, cart,
+│                  #   checkout, order, 404, macros
 ├── static/           # css/style.css, js/{lightbox,filter}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
-└── database/         # schema.sql, seed.sql, art_gallery.db (generated)
+└── database/         # schema.sql (artists, artworks, orders, order_items),
+                  #   seed.sql, art_gallery.db (generated)
 ```
 
 ## Stage roadmap
@@ -195,10 +218,13 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       in the query string. The SQL version is what ships.
 - [x] **11 — Shopping cart.** Sessions, cart state, add/remove/quantity,
       subtotal, inventory rules for one-of-a-kind pieces.
-- [ ] **12 — Checkout.** POST requests, form handling, validation, order
+- [x] **12 — Checkout.** POST requests, form handling, validation, order
       creation, database transactions. Clearly-labelled MOCK payment flow.
-- [ ] **13 — Order system.** `orders` / `order_items`; store price at time of
-      purchase, not a live reference to the artwork's current price.
+      Created `orders` and `order_items` (with the price snapshot), since an
+      order cannot be written without them.
+- [~] **13 — Order system.** Tables and the price snapshot landed at Stage 12.
+      Remaining: the order status lifecycle, looking an order up, order
+      history, and why the snapshot matters shown rather than asserted.
 - [ ] **14 — Real payments.** Stripe test mode, checkout sessions, webhooks,
       payment confirmation and failure, order status.
 - [ ] **15 — API / JSON.** `/api/...` endpoints, GET/POST, `fetch()`, why APIs

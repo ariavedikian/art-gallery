@@ -50,12 +50,17 @@ def build(reset=False):
 
         artists = connection.execute("SELECT COUNT(*) FROM artists").fetchone()[0]
         artworks = connection.execute("SELECT COUNT(*) FROM artworks").fetchone()[0]
+
+        # orders and order_items are created empty. Counting them here is a
+        # cheap way to prove the tables exist after a rebuild.
+        orders = connection.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
     finally:
         # Always close, even if something above raised an error.
         connection.close()
 
     print(f"Created {DB_PATH}")
     print(f"  {artists} artists, {artworks} artworks (placeholder content)")
+    print(f"  {orders} orders")
 
 
 if __name__ == "__main__":
