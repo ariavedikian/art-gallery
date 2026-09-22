@@ -59,12 +59,48 @@
           {% endfor %}
 
           <li><a href="{{ url_for('about') }}">About</a></li>
+
+          {# cart_count comes from the context processor, like the nav artists,
+             so the number is right on every page without any route passing it.
+             The count is hidden when it is zero: an empty badge is noise. #}
+          {% set cart_url = url_for('cart') %}
+          <li><a href="{{ cart_url }}"
+                 {%- if request.path == cart_url %} aria-current="page"{% endif %}>Cart{% if cart_count %}
+              <span class="nav__count">{{ cart_count }}</span>
+              <span class="visually-hidden">
+                ({{ cart_count }} {{ "item" if cart_count == 1 else "items" }})</span>
+            {% endif %}</a></li>
         </ul>
       </nav>
     </div>
   </header>
 
   <main id="main">
+
+    {#
+      Flash messages: a note left in the session by one request and read by
+      the next. get_flashed_messages() also CLEARS them, which is what makes
+      them one-shot — reload the page and they are gone, because they were
+      already consumed.
+
+      This sits in base.html rather than in each template so any route can
+      flash a message without its page needing to know about it.
+
+      role="status" with aria-live tells a screen reader to announce the
+      message when it appears, rather than leaving it to be discovered.
+    #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="container">
+          <ul class="flashes" role="status" aria-live="polite">
+            {% for category, message in messages %}
+              <li class="flash flash--{{ category }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endwith %}
+
     {% block content %}{% endblock %}
   </main>
 

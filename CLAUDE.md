@@ -103,6 +103,30 @@ styling, cluttered layouts.
   `artwork_grid(...)`; no page writes its own `<ul class="artwork-grid">`.
 - **Store facts, derive conclusions.** `available_for_purchase` and
   `inventory_quantity` are stored; Sold is worked out from them.
+- **The cart lives in the signed session cookie** and stores exactly one
+  thing: `{artwork_id: quantity}`. Titles, prices and availability are read
+  from the database on every request. A price that arrives from the client is
+  a price the client chose.
+- **Session keys are strings.** A session is serialised to JSON before it is
+  signed, so `4` goes in and `"4"` comes back. Cart code uses `str(id)`.
+- **Assign to the session, never mutate it in place.** Flask re-sends the
+  cookie only when it notices a change, and it cannot notice a mutation
+  inside a dict it handed you.
+- **Anything that changes state is a POST followed by a redirect**
+  (POST/Redirect/GET), so a reload never repeats the action. Reads stay GET,
+  which is why filters are GET and `/cart/add` is not.
+- **A cart reserves nothing.** Availability is checked when a work is added
+  and re-derived every time the cart is rendered, but the only check that
+  counts is the atomic one inside the checkout transaction (Stage 12/13).
+  The artwork page says so in plain words.
+- **A rule enforced only in a template is not enforced.** The Add to cart
+  button is rendered only for a work that is for sale, and `/cart/add`
+  checks `status` again, because a POST can arrive without that page ever
+  being loaded.
+- **A cart line with a problem is shown, not silently corrected**, and left
+  out of the subtotal. The visitor decides what to do about it.
+- **`SECRET_KEY` comes from `ART_GALLERY_SECRET_KEY`**, with a dev fallback so
+  the app runs out of the box. Stage 20 revisits this properly.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -137,7 +161,7 @@ art-gallery/
 ├── requirements.txt  # pinned dependencies
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
-├── templates/        # base, index, gallery, artist, artwork, 404, macros
+├── templates/        # base, index, gallery, artist, artwork, cart, 404, macros
 ├── static/           # css/style.css, js/{lightbox,filter}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 └── database/         # schema.sql, seed.sql, art_gallery.db (generated)
@@ -169,7 +193,7 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
 - [x] **10 — Search & filtering.** Built twice on purpose: first in the
       browser over the cards already on the page, then in SQL with the filters
       in the query string. The SQL version is what ships.
-- [ ] **11 — Shopping cart.** Sessions, cart state, add/remove/quantity,
+- [x] **11 — Shopping cart.** Sessions, cart state, add/remove/quantity,
       subtotal, inventory rules for one-of-a-kind pieces.
 - [ ] **12 — Checkout.** POST requests, form handling, validation, order
       creation, database transactions. Clearly-labelled MOCK payment flow.

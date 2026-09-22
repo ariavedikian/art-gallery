@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{#
+  The cart.
+
+  The route passes in `lines` — one entry per work, already priced from the
+  database — and `subtotal`. This template does no arithmetic and makes no
+  decisions about availability; it only decides how a line looks. Same
+  division as the artwork grid: SQL and Python decide what, templates decide
+  how.
+#}
+
+{% block title %}Your cart — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li aria-current="page">Your cart</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Acquisition</p>
+      <h1 class="display">Your cart</h1>
+
+      {% if not lines %}
+
+        <p class="lead">Your cart is empty.</p>
+        <p><a class="button" href="{{ url_for('gallery') }}">Browse the collection</a></p>
+
+      {% else %}
+
+        <ul class="cart">
+          {% for line in lines %}
+            {% set art = line.artwork %}
+            <li class="cart-line{% if line.issue %} cart-line--issue{% endif %}">
+
+              <figure class="mat cart-line__figure">
+                <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
+                     alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
+                     width="{{ art.image_width }}" height="{{ art.image_height }}"
+                     loading="lazy">
+              </figure>
+
+              <div class="cart-line__body">
+                <h2 class="heading work-title">
+                  <a href="{{ url_for('artwork_page', artwork_id=art.id) }}">{{ art.title }}</a>
+                </h2>
+                <p class="muted small">{{ art.artist_name }}, {{ art.year }}</p>
+                <p class="muted small">{{ art.medium }}</p>
+
+                {#
+                  The issue was worked out in Python, on this request, from
+                  today's database rows. The wording of it is presentation, so
+                  it lives here.
+                #}
+                {% if line.issue == "sold" %}
+                  <p class="cart-line__note small">This work has sold since you
+                    added it, so it is not included in the total.</p>
+                {% elif line.issue == "not-for-sale" %}
+                  <p class="cart-line__note small">This work is no longer offered
+                    for sale, so it is not included in the total.</p>
+                {% elif line.issue == "too-many" %}
+                  <p class="cart-line__note small">Only {{ art.inventory_quantity }}
+                    {{ "is" if art.inventory_quantity == 1 else "are" }} available.
+                    Reduce the quantity to continue.</p>
+                {% endif %}
+              </div>
+
+              <div class="cart-line__actions">
+                <p class="cart-line__total price__amount">{{ line.subtotal_cents | usd }}</p>
+
+                {% if line.quantity > 1 %}
+                  <p class="muted small">{{ art.price_cents | usd }} each</p>
+                {% endif %}
+
+                {#
+                  One form per line, each carrying its own artwork_id. Without
+                  that hidden field the server would have no idea which line
+                  the numbers belong to.
+                #}
+                {% if art.status == "for-sale" and art.inventory_quantity > 1 %}
+                  <form class="cart-line__quantity" method="post"
+                        action="{{ url_for('cart_update') }}">
+                    <input type="hidden" name="artwork_id" value="{{ art.id }}">
+                    <label class="visually-hidden" for="qty-{{ art.id }}">
+                      Quantity of {{ art.title }} by {{ art.artist_name }}</label>
+                    <input type="number" id="qty-{{ art.id }}" name="quantity"
+                           value="{{ line.quantity }}" min="0" step="1"
+                           max="{{ [art.inventory_quantity, max_per_line] | min }}">
+                    <button class="button button--quiet button--small"
+                            type="submit">Update</button>
+                  </form>
+                {% elif line.quantity > 1 %}
+                  {# Quantity is stuck above what exists, and the work is not a
+                     live edition any more, so there is nothing sensible to
+                     change it to. Removing is the only useful action. #}
+                  <p class="muted small">Quantity {{ line.quantity }}</p>
+                {% endif %}
+
+                <form method="post" action="{{ url_for('cart_remove') }}">
+                  <input type="hidden" name="artwork_id" value="{{ art.id }}">
+                  <button class="button button--quiet button--small" type="submit">
+                    Remove<span class="visually-hidden">
+                      {{ art.title }} by {{ art.artist_name }}</span>
+                  </button>
+                </form>
+              </div>
+
+            </li>
+          {% endfor %}
+        </ul>
+
+        <div class="cart-summary">
+          <p class="cart-summary__row">
+            <span>Subtotal</span>
+            <span class="price__amount">{{ subtotal | usd }}</span>
+          </p>
+          <p class="muted small">Shipping, insurance and any applicable taxes
+            are arranged separately.</p>
+
+          {# Inert until Stage 12. A disabled button is honest: it shows where
+             the journey goes without pretending it works yet. #}
+          <button class="button" type="button" disabled>Proceed to checkout</button>
+          <p class="muted small">Checkout opens at the next stage. Nothing in
+            this cart is reserved until a purchase is completed.</p>
+        </div>
+
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

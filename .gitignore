@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 *.db
 .env
+
+# Editor/tooling scratch, not part of the project
+.claude/

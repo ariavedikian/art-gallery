@@ -62,10 +62,35 @@
             {% elif artwork.status == "sold" %}
               <p class="muted small">This work has been sold.</p>
             {% else %}
-              {# Inert until the cart exists at Stage 11. A disabled button is
-                 honest: it shows the action without pretending it works. #}
-              <button class="button" type="button" disabled>Add to cart</button>
-              <p class="purchase__note muted small">Purchasing opens soon.</p>
+              {#
+                A form, not a link. Links are for fetching pages; anything
+                that CHANGES something is a POST, so that a browser prefetching
+                a link, or a visitor reloading, cannot add the work by
+                accident.
+
+                The artwork id travels in a hidden field rather than in the
+                URL, because the URL of a POST is the action, not the subject.
+              #}
+              <form class="purchase__form" method="post"
+                    action="{{ url_for('cart_add') }}">
+                <input type="hidden" name="artwork_id" value="{{ artwork.id }}">
+
+                {% if artwork.inventory_quantity > 1 %}
+                  {# An edition, so a quantity makes sense. A unique original
+                     gets no quantity field at all: there is only ever one. #}
+                  <label class="visually-hidden" for="quantity">Quantity</label>
+                  <input type="number" id="quantity" name="quantity"
+                         value="1" min="1" step="1"
+                         max="{{ [artwork.inventory_quantity, max_per_line] | min }}">
+                {% endif %}
+
+                <button class="button" type="submit">Add to cart</button>
+              </form>
+
+              {# Said plainly, because it is true: the cart is a wish list.
+                 Nothing is held until a purchase actually goes through. #}
+              <p class="purchase__note muted small">Adding a work to your cart
+                does not reserve it. Availability is confirmed at checkout.</p>
             {% endif %}
           </div>
         </div>

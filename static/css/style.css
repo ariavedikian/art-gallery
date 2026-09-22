@@ -228,6 +228,20 @@ a:focus-visible,
   transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
+/* The number beside the Cart link. Drawn as a pill rather than as text so it
+   reads as a count at a glance and does not compete with the nav wording. */
+.nav__count {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0.15em 0.45em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .nav a:hover,
 .nav a[aria-current="page"] {
   color: var(--ink);
@@ -273,6 +287,8 @@ a:focus-visible,
 
 .button--quiet { background: transparent; color: var(--ink); }
 .button--quiet:hover { background: var(--ink); color: var(--paper); }
+
+.button--small { padding: 0.6em 1.1em; font-size: 0.6875rem; }
 
 /* --- 8. Mat: the reusable frame for every artwork ---------------------------
    A gallery never crops a painting. object-fit: contain scales the whole
@@ -506,9 +522,17 @@ a.feature__media:hover img { transform: scale(1.03); }
   border-top: 1px solid var(--line);
 }
 
-.purchase .button[disabled] {
+/* Any inert button, wherever it appears. Was scoped to .purchase until the
+   cart page grew a disabled checkout button with the same job. */
+.button[disabled] {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.purchase__form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .purchase__note { margin-top: var(--space-2); }
@@ -563,7 +587,121 @@ a.feature__media:hover img { transform: scale(1.03); }
 /* The hidden attribute must win against any display set elsewhere. */
 [hidden] { display: none !important; }
 
-/* --- 16. Lightbox ---------------------------------------------------------- */
+/* --- 16. Flash messages ----------------------------------------------------- */
+
+/* One-off notes from the previous request: added to cart, removed, quantity
+   capped. Quiet by design — a confirmation should not shout. */
+.flashes {
+  list-style: none;
+  margin-top: var(--space-3);
+}
+
+.flash {
+  padding: var(--space-2) var(--space-3);
+  background: var(--paper-warm);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.flash + .flash { margin-top: var(--space-1); }
+
+.flash--success { border-left-color: var(--ink); }
+
+/* Anything the visitor needs to act on, or was refused, borrows the one
+   accent colour the site has — the same red that marks a sold work. */
+.flash--notice,
+.flash--error { border-left-color: var(--accent); }
+
+
+/* --- 17. Cart --------------------------------------------------------------- */
+
+.cart {
+  list-style: none;
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* Three columns: a small plate of the work, its details, and the money and
+   controls pushed to the right where a reader expects totals. */
+.cart-line {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* A line that cannot be bought is tinted rather than crossed out: still
+   legible, visibly set apart from the lines that count. */
+.cart-line--issue { background: var(--paper-warm); }
+
+.cart-line__figure { padding: var(--space-1); }
+.cart-line__figure img { aspect-ratio: 4 / 5; }
+
+.cart-line__body > * + * { margin-top: 0.3rem; }
+.cart-line__body .heading { font-size: 1.25rem; }
+.cart-line__body a { color: inherit; text-decoration: none; }
+.cart-line__body a:hover { text-decoration: underline; }
+
+.cart-line__note { color: var(--accent); max-width: 34ch; }
+
+.cart-line__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  text-align: right;
+}
+
+.cart-line__total { font-size: 1.125rem; }
+
+.cart-line__quantity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The number inputs match the filter controls rather than inventing a second
+   look for a form field. */
+.cart-line__quantity input,
+.purchase__form input[type="number"] {
+  width: 4.5rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.55em 0.7em;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.cart-line__quantity input:focus-visible,
+.purchase__form input[type="number"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cart-summary {
+  margin-top: var(--space-4);
+  margin-left: auto;
+  max-width: 26rem;
+  text-align: right;
+}
+
+.cart-summary > * + * { margin-top: var(--space-2); }
+
+.cart-summary__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 1.25rem;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+
+/* --- 18. Lightbox ---------------------------------------------------------- */
 
 /* A <dialog> is hidden until showModal() opens it, then sits in the browser
    top layer above every other element, with ::backdrop dimming the page. */
@@ -663,7 +801,7 @@ a.feature__media:hover img { transform: scale(1.03); }
   outline-offset: 3px;
 }
 
-/* --- 17. Footer ------------------------------------------------------------- */
+/* --- 19. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -673,7 +811,7 @@ a.feature__media:hover img { transform: scale(1.03); }
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 18. Responsive --------------------------------------------------------- */
+/* --- 20. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */
@@ -699,6 +837,18 @@ a.feature__media:hover img { transform: scale(1.03); }
   .spotlight__figure { padding: var(--space-3); }
 
   .site-header__inner { gap: var(--space-2); }
+
+  /* The money column has nowhere to go on a narrow screen, so it drops under
+     the details and aligns left with everything else. */
+  .cart-line { grid-template-columns: 5rem minmax(0, 1fr); }
+
+  .cart-line__actions {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .cart-summary { max-width: none; }
 
   .lightbox__inner {
     grid-template-columns: 1fr;

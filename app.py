@@ -1,22 +1,37 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 10 (part 2): the collection is filtered in SQL, from the query string.
+Stage 11: the shopping cart.
 
-Every page that shows artworks — the homepage, each artist page and All works
-— fetches rows with SQL and renders them through one shared grid macro. Which
-works appear and in what order is decided entirely by the queries here; the
-templates only decide how a work looks.
+HTTP is stateless — two requests from the same visitor arrive as strangers —
+so a cart has to be stored somewhere and handed back with every request. This
+one lives in the Flask session: a cookie in the visitor's browser, signed with
+SECRET_KEY so it cannot be edited without the signature failing.
+
+The cookie holds one thing: {artwork_id: quantity}. Titles, prices and
+availability are read from the database on every request, so a price can never
+arrive from the client.
 """
 
+import os
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, abort, g, render_template, request
+from flask import (Flask, abort, flash, g, redirect, render_template, request,
+                   session, url_for)
 
 app = Flask(__name__)
 
 GALLERY_NAME = "Gallery Placeholder"
+
+# The key Flask uses to SIGN the session cookie. Signing is not encryption:
+# the visitor can read what is in their cookie, they simply cannot change it
+# without the signature failing and Flask throwing the whole cookie away.
+#
+# In development this falls back to a fixed string so the app runs out of the
+# box. A real deployment sets ART_GALLERY_SECRET_KEY to a long random value
+# and never commits it; Stage 20 comes back to this properly.
+app.secret_key = os.environ.get("ART_GALLERY_SECRET_KEY", "dev-key-not-a-secret")
 
 # Built from database/schema.sql + seed.sql by: python init_db.py --reset
 DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
@@ -298,6 +313,139 @@ def get_artworks_by_artist(slug):
     """, (slug,))
 
 
+# --- The cart ----------------------------------------------------------------
+# The cart is a session value, not a table. Nothing here writes to the
+# database, which is why Stage 11 needed no schema change at all.
+
+CART_KEY = "cart"
+
+# A ceiling on one line, whatever the inventory says. It stops a typo — or
+# somebody editing the number field in dev tools — from putting 9,999 prints
+# in a cart. The real limit is still the inventory; this is just a sane cap.
+MAX_PER_LINE = 10
+
+
+def get_cart():
+    """The cart exactly as stored: {"4": 1, "2": 3}.
+
+    The keys are STRINGS, not ints. A session is turned into JSON before it is
+    signed, and JSON object keys are always strings: 4 goes in, "4" comes back.
+    Everything that touches the cart uses str(id) for that reason.
+
+    The isinstance check is for a cookie that is old, hand-edited or simply
+    from a different version of this app. A cart we cannot understand is an
+    empty cart, not a crash on every page.
+    """
+    cart = session.get(CART_KEY, {})
+    return dict(cart) if isinstance(cart, dict) else {}
+
+
+def save_cart(cart):
+    """Write the cart back to the session.
+
+    Note the assignment. Flask only re-signs and re-sends the cookie when it
+    NOTICES the session changed, and it cannot notice a mutation inside a dict
+    it handed you — cart["4"] = 1 on the object get_cart() returned may simply
+    be lost. Read it out, change it, assign it back.
+
+    Empty lines are dropped on the way out, so "remove" never has to be a
+    special case anywhere else.
+    """
+    session[CART_KEY] = {key: qty for key, qty in cart.items() if qty > 0}
+
+
+def cart_count():
+    """Total items in the cart, for the number beside the nav link."""
+    return sum(get_cart().values())
+
+
+def get_artworks_by_ids(ids):
+    """Fetch several artworks in one query rather than one query per id.
+
+    The IN list needs one ? per id, so the STRUCTURE of the clause is built
+    from a count we worked out ourselves, while every id still travels as a
+    parameter. Same split as search_artworks: we write the SQL, the visitor
+    only ever supplies values.
+    """
+    if not ids:
+        return []
+
+    placeholders = ", ".join("?" * len(ids))
+    return query_db(f"""
+        SELECT {_ARTWORK_COLUMNS}
+        FROM artworks aw
+        JOIN artists ar ON ar.id = aw.artist_id
+        WHERE aw.id IN ({placeholders})
+    """, ids)
+
+
+def get_cart_lines():
+    """The cart as real data: one line per work, priced from the database.
+
+    Look at what the cookie actually contributes: an id and a quantity. The
+    title, the price and the availability are read fresh here on every
+    request. So a cart left open overnight shows this morning's truth, and a
+    visitor who edited their own cookie can change what they are asking for
+    but never what it costs.
+
+    Each line carries an `issue`, re-derived now rather than trusted from when
+    the work was added. Adding to a cart reserves nothing, so a work can go
+    sold, or be withdrawn from sale, while it sits there. A line with an issue
+    is shown but left out of the subtotal: we tell the visitor and let them
+    decide, rather than silently changing what they asked for.
+    """
+    cart = get_cart()
+    if not cart:
+        return []
+
+    ids = [int(key) for key in cart if key.isdigit()]
+    by_id = {row["id"]: row for row in get_artworks_by_ids(ids)}
+
+    lines = []
+
+    # dicts keep insertion order, and the JSON round-trip through the cookie
+    # preserves it, so the cart reads in the order things were added to it.
+    for key, quantity in cart.items():
+        artwork = by_id.get(int(key)) if key.isdigit() else None
+
+        # The work no longer exists. There is nothing to show and nothing to
+        # price, so the line just disappears.
+        if artwork is None:
+            continue
+
+        if artwork["status"] == "sold":
+            issue = "sold"
+        elif artwork["status"] == "not-for-sale":
+            issue = "not-for-sale"
+        elif quantity > artwork["inventory_quantity"]:
+            issue = "too-many"
+        else:
+            issue = None
+
+        lines.append({
+            "artwork": artwork,
+            "quantity": quantity,
+            "issue": issue,
+            "subtotal_cents": artwork["price_cents"] * quantity,
+        })
+
+    return lines
+
+
+def cart_subtotal(lines):
+    """What the ready-to-buy lines come to.
+
+    Lines with a problem are excluded, so the total never quotes a price for
+    something the gallery cannot actually sell.
+    """
+    return sum(line["subtotal_cents"] for line in lines if line["issue"] is None)
+
+
+def allowed_quantity(artwork):
+    """The most of this work one visitor may put in a cart."""
+    return min(artwork["inventory_quantity"], MAX_PER_LINE)
+
+
 # --- Template helpers --------------------------------------------------------
 
 @app.template_filter("usd")
@@ -319,6 +467,15 @@ def inject_site_globals():
     return {
         "gallery_name": GALLERY_NAME,
         "nav_artists": get_artists(),
+
+        # The nav shows this on every page, so it belongs here rather than in
+        # each route. It reads the cookie only — no database query.
+        "cart_count": cart_count(),
+
+        # The cap is a gallery rule, and a rule belongs in one place. The
+        # quantity inputs use it for their max= so the browser enforces the
+        # same limit the server does.
+        "max_per_line": MAX_PER_LINE,
     }
 
 
@@ -403,6 +560,102 @@ def artwork_page(artwork_id):
     )
 
 
+# --- Cart routes -------------------------------------------------------------
+# Every route that CHANGES the cart is a POST, and every one of them ends in a
+# redirect rather than a rendered page. That pattern has a name,
+# POST/Redirect/GET, and it exists because of what a browser does on reload:
+# reloading a page that came from a POST re-sends the POST. Redirecting means
+# the page the visitor ends up on was fetched with a plain GET, so refreshing
+# it just asks for the cart again instead of adding the painting a second time.
+
+@app.get("/cart")
+def cart():
+    lines = get_cart_lines()
+    return render_template("cart.html", lines=lines, subtotal=cart_subtotal(lines))
+
+
+@app.post("/cart/add")
+def cart_add():
+    """Put a work in the cart.
+
+    request.form is the POST body, the counterpart to request.args. type=int
+    asks Werkzeug to convert the value and hand back the default if it cannot,
+    so "abc" in the quantity field becomes 1 rather than a 500 error.
+    """
+    artwork_id = request.form.get("artwork_id", type=int)
+    quantity = request.form.get("quantity", default=1, type=int)
+
+    # The id came from a form, so it can be anything. An id for a work that
+    # does not exist is a request for a page that does not exist.
+    artwork = get_artwork(artwork_id) if artwork_id is not None else None
+    if artwork is None:
+        abort(404)
+
+    # The same `status` column the price line and the availability filter
+    # read. The button is only rendered for a work that is for sale, but a
+    # POST can be sent without ever loading that page, so the server checks
+    # again. A rule enforced only in the template is not enforced.
+    if artwork["status"] != "for-sale":
+        flash("That work is not available to buy.", "error")
+        return redirect(url_for("artwork_page", artwork_id=artwork["id"]))
+
+    cart = get_cart()
+    key = str(artwork["id"])
+    allowed = allowed_quantity(artwork)
+    wanted = cart.get(key, 0) + max(quantity, 1)
+
+    if wanted > allowed:
+        wanted = allowed
+        flash(f"Only {allowed} of that work can be added. Your cart now "
+              f"holds {allowed}.", "notice")
+    else:
+        flash("Added to your cart.", "success")
+
+    cart[key] = wanted
+    save_cart(cart)
+
+    return redirect(url_for("cart"))
+
+
+@app.post("/cart/update")
+def cart_update():
+    """Change the quantity on one line. Zero or less means remove it."""
+    artwork_id = request.form.get("artwork_id", type=int)
+    quantity = request.form.get("quantity", default=0, type=int)
+
+    cart = get_cart()
+    key = str(artwork_id)
+    artwork = get_artwork(artwork_id) if artwork_id is not None else None
+
+    if artwork is None or quantity <= 0:
+        # An unknown id and a quantity of zero both mean the same thing: the
+        # line should not be there. Nothing to complain about either way.
+        cart.pop(key, None)
+    else:
+        allowed = allowed_quantity(artwork)
+        if quantity > allowed:
+            quantity = allowed
+            flash(f"Only {allowed} of that work are available.", "notice")
+        cart[key] = quantity
+
+    save_cart(cart)
+    return redirect(url_for("cart"))
+
+
+@app.post("/cart/remove")
+def cart_remove():
+    """Take one work out of the cart entirely."""
+    cart = get_cart()
+
+    # str(None) is "None", which is not a key in the cart, so a missing or
+    # non-numeric id removes nothing rather than raising.
+    cart.pop(str(request.form.get("artwork_id", type=int)), None)
+    save_cart(cart)
+
+    flash("Removed from your cart.", "notice")
+    return redirect(url_for("cart"))
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -410,7 +663,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 10}
+    return {"status": "ok", "stage": 11}
 
 
 # --- Error handlers ----------------------------------------------------------
