@@ -124,22 +124,21 @@
             <select id="image" name="image"
                     {%- if errors.image %} aria-invalid="true" aria-describedby="error-image"{% endif %}>
               <option value="">Choose…</option>
-              {% for image in images %}
-                <option value="{{ image }}" {% if values.image == image %}selected{% endif %}>{{ image }}</option>
+              {# Each option shows the size read from the file, so the admin
+                 sees what will be stored. A file whose size cannot be read
+                 is listed, not hidden: a file silently missing from the menu
+                 is harder to diagnose than one that says what is wrong. #}
+              {% for image, size in images.items() %}
+                <option value="{{ image }}" {% if values.image == image %}selected{% endif %}>
+                  {{ image }} — {{ "%d × %d px" | format(*size) if size else "size unreadable" }}
+                </option>
               {% endfor %}
             </select>
             {% if errors.image %}<p class="field__error small" id="error-image">{{ errors.image }}</p>{% endif %}
-            <p class="field__hint muted small">Placeholders only for now. Uploading
-              real images arrives at Stage 17.</p>
+            <p class="field__hint muted small">Placeholders only for now; uploads
+              come next. The pixel size is read from the file when you save,
+              so the page can reserve the image's space before it loads.</p>
           </div>
-
-          <div class="admin-form__pair">
-            {{ form_field("image_width", "Width (px)", values.image_width, errors, inputmode="numeric") }}
-            {{ form_field("image_height", "Height (px)", values.image_height, errors, inputmode="numeric") }}
-          </div>
-          <p class="field__hint muted small">The image's real pixel size, so the
-            page can reserve its space before it loads. Stage 17 will read this
-            from the file instead.</p>
 
           {{ form_field("display_order", "Running order", values.display_order, errors,
                         hint="Lower numbers hang first. Leave gaps (10, 20, 30…) so a work can be slotted in between.",

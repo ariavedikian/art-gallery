@@ -30,8 +30,6 @@ GOOD_FORM = {
     "inventory_quantity": "1",
     "available_for_purchase": "1",
     "image": "placeholders/artwork-01.svg",
-    "image_width": "900",
-    "image_height": "1100",
     "display_order": "15",
 }
 
@@ -111,7 +109,6 @@ def validation(results):
         "inventory_quantity": "-1",                    # negative
         "artist_id": "999",                            # no such artist
         "image": "../../app.py",                       # not an offered image
-        "image_width": "0",                            # out of range
     }
     for field, value in bad.items():
         response = client.post("/admin/artworks/new", data=dict(GOOD_FORM, **{field: value}))
@@ -140,8 +137,7 @@ def editing(results):
 
     edit = dict(GOOD_FORM, artist_id="2", title="Retitled Print", price="1,300",
                 inventory_quantity="12", loaded_inventory=loaded,
-                image="placeholders/artwork-02.svg", image_width="1000",
-                image_height="800", display_order="20")
+                image="placeholders/artwork-02.svg", display_order="20")
     response = client.post("/admin/artworks/2/edit", data=edit)
     results.check("a valid edit redirects", response.status_code, 302)
 
@@ -171,8 +167,7 @@ def lost_update(results):
     edit = dict(GOOD_FORM, artist_id="2", title="Artwork Title",
                 description="Fixed a typo.", price="1250",
                 inventory_quantity="12", loaded_inventory=loaded,
-                image="placeholders/artwork-02.svg", image_width="1000",
-                image_height="800", display_order="20")
+                image="placeholders/artwork-02.svg", display_order="20")
     response = client.post("/admin/artworks/2/edit", data=edit)
     html = response.get_data(as_text=True)
 

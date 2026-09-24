@@ -236,6 +236,15 @@ styling, cluttered layouts.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
 - The data model must support both one-of-a-kind originals and multi-copy
   editions.
+- **Image sizes are read from the file, never typed.** `image_size()` reads
+  them; the admin form shows them in the image menu and never asks. Any
+  `image_width`/`image_height` in a POST is ignored. The allowlist check
+  (`image_choices()`) runs before anything opens a file, because a filename
+  from a form is a path, and `../../app.py` is a path too.
+  `tests/test_images.py` also checks every seeded size against its file.
+- **Placeholders are SVG, and only SVG**: files we drew and committed, so
+  their contents are trusted. Uploaded images will never be SVG, since an
+  SVG can carry a `<script>` that runs as this site.
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
@@ -308,6 +317,7 @@ python tests/test_order_snapshot.py
 python tests/test_api.py
 python tests/test_admin.py
 python tests/test_cms.py
+python tests/test_images.py
 ```
 
 Create (or re-password) an admin. The database starts with none, and
@@ -390,10 +400,13 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       **Part 2:** create/edit/delete artworks with server-side validation,
       optimistic concurrency on stock, delete refused for sold works, and
       `paid → shipped` via `ORDER_TRANSITIONS`.
-- [ ] **17 — Image management.** Static file organisation, naming conventions,
-      optimisation, safe upload concepts. The admin form currently picks from
-      existing placeholders and takes width/height by hand; Stage 17 should
-      read dimensions from the file and add real uploads.
+- [~] **17 — Image management.** Static file organisation, naming conventions,
+      optimisation, safe upload concepts. Split in three.
+      **Part 1 (done):** sizes read from the file (`image_size()`), not typed;
+      the form cannot override them; placeholders restricted to SVG.
+      **Part 2:** safe uploads (multipart forms, size limits, verify by
+      decoding, re-encode, generated filenames, never SVG).
+      **Part 3:** optimisation (resized copies, `srcset`/`sizes`).
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard

@@ -1008,12 +1008,6 @@ th.admin-table__number { text-align: right; }
   padding-right: var(--space-2);
 }
 
-.admin-form__pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-}
-
 .admin-form__check {
   display: flex;
   align-items: center;

@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
+from xml.etree import ElementTree
 
 import click
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
@@ -990,7 +991,18 @@ def set_admin_password(username, password):
 # --- Admin: editing the collection -------------------------------------------
 
 PLACEHOLDER_DIR = Path(app.static_folder) / "images" / "placeholders"
-IMAGE_SUFFIXES = {".svg", ".jpg", ".jpeg", ".png", ".webp"}
+
+# Placeholders are SVG, and only SVG: files we drew ourselves and committed,
+# so we can trust what is inside them. Uploaded images (Stage 17 part 2) are a
+# different matter -- a stranger's file -- and will never be SVG, because an
+# SVG can carry a <script> that would run as this site.
+PLACEHOLDER_SUFFIXES = {".svg"}
+
+# The largest side an image may claim, in pixels. A sanity bound, not a
+# design limit: anything bigger is a mistake or a hostile file.
+MAX_IMAGE_SIDE = 20000
+
+_SVG_TAG = "{http://www.w3.org/2000/svg}svg"
 
 # The longest each text field may be. Not a database rule -- SQLite would store
 # a novel in a TEXT column -- but a sanity check on what reaches the page.
@@ -1012,15 +1024,68 @@ _ARTWORK_WRITE_COLUMNS = (
 )
 
 
+def _svg_length(text):
+    """"900" or "900px" -> 900.0. Anything else ("100%", "12cm") -> None.
+
+    A percentage is relative to wherever the SVG is placed, so it is not a
+    size at all; physical units would need a DPI we do not have. Either way
+    the caller falls back to the viewBox.
+    """
+    text = (text or "").strip().removesuffix("px")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def image_size(path):
+    """(width, height) in pixels, read from the image file itself -- or None.
+
+    The admin used to type these, which meant they could be wrong. The file
+    already knows its own size, so ask the file.
+
+    An SVG states its size in the attributes of its root <svg> element:
+    width="900" height="1100", or failing that, a viewBox="0 0 900 1100"
+    whose last two numbers are the drawing's width and height.
+
+    Only ever called on files we chose from a known folder. It opens whatever
+    path it is given, so the path must be checked BEFORE it gets here.
+    """
+    try:
+        root = ElementTree.parse(path).getroot()
+    except (OSError, ElementTree.ParseError):
+        return None
+    if root.tag != _SVG_TAG:
+        return None
+
+    width = _svg_length(root.get("width"))
+    height = _svg_length(root.get("height"))
+    if width is None or height is None:
+        box = (root.get("viewBox") or "").replace(",", " ").split()
+        try:
+            width, height = float(box[2]), float(box[3])
+        except (IndexError, ValueError):
+            return None
+
+    size = round(width), round(height)
+    if not all(1 <= side <= MAX_IMAGE_SIDE for side in size):
+        return None
+    return size
+
+
 def image_choices():
-    """The image paths the form may offer: the placeholder files that exist.
+    """The images the form may offer, each with its size: {path: (w, h)}.
 
     Read from the folder rather than typed into a list, so a new placeholder
-    file appears in the menu without touching code. Stage 17 replaces this
-    with real uploads.
+    appears in the menu without touching code. The size is None for a file
+    whose size cannot be read; the form shows that rather than hiding it.
+
+    One dict answers both questions the form asks -- "is this a file we
+    offer?" and "how big is it?" -- so the two answers can never disagree.
     """
-    return sorted(f"placeholders/{path.name}" for path in PLACEHOLDER_DIR.iterdir()
-                  if path.suffix.lower() in IMAGE_SUFFIXES)
+    return {f"placeholders/{path.name}": image_size(path)
+            for path in sorted(PLACEHOLDER_DIR.iterdir())
+            if path.suffix.lower() in PLACEHOLDER_SUFFIXES}
 
 
 def parse_price(text):
@@ -1078,8 +1143,7 @@ def artwork_form_values(artwork=None):
         return {"artist_id": "", "title": "", "year": "", "medium": "",
                 "category": "", "description": "", "price": "",
                 "inventory_quantity": "1", "available_for_purchase": True,
-                "is_featured": False, "image": "", "image_width": "",
-                "image_height": "", "display_order": "100"}
+                "is_featured": False, "image": "", "display_order": "100"}
 
     return {
         "artist_id": str(artwork["artist_id"]),
@@ -1093,8 +1157,6 @@ def artwork_form_values(artwork=None):
         "available_for_purchase": bool(artwork["available_for_purchase"]),
         "is_featured": bool(artwork["is_featured"]),
         "image": artwork["image"],
-        "image_width": str(artwork["image_width"]),
-        "image_height": str(artwork["image_height"]),
         "display_order": str(artwork["display_order"]),
     }
 
@@ -1111,8 +1173,7 @@ def validate_artwork(form):
     """
     values = {name: form.get(name, "").strip() for name in (
         "artist_id", "title", "year", "medium", "category", "description",
-        "price", "inventory_quantity", "image", "image_width",
-        "image_height", "display_order")}
+        "price", "inventory_quantity", "image", "display_order")}
 
     # An UNTICKED checkbox sends nothing at all -- not "off", not "0", just an
     # absent name. So "ticked" can only mean "the name is present".
@@ -1144,15 +1205,18 @@ def validate_artwork(form):
     if inventory is None:
         errors["inventory_quantity"] = "A whole number from 0 to 10,000."
 
-    if values["image"] not in image_choices():
+    # The size is not asked for: it is read from the file. The allowlist
+    # check comes first, and it has to -- image_size() opens whatever path it
+    # is handed, and "../../app.py" is a path too. Only a name that is a key
+    # in image_choices() ever reaches the filesystem. Any image_width or
+    # image_height in the POST is simply never read.
+    images = image_choices()
+    if values["image"] not in images:
         errors["image"] = "Choose an image."
-
-    width = parse_whole_number(values["image_width"], 1, 20000)
-    height = parse_whole_number(values["image_height"], 1, 20000)
-    if width is None:
-        errors["image_width"] = "The image's width in pixels."
-    if height is None:
-        errors["image_height"] = "The image's height in pixels."
+    elif images[values["image"]] is None:
+        errors["image"] = "This file's size cannot be read. Choose another image."
+    else:
+        width, height = images[values["image"]]
 
     display_order = parse_whole_number(values["display_order"], 0, 100000)
     if display_order is None:
