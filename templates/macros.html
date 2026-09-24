@@ -112,3 +112,57 @@
     </div>
   </li>
 {% endmacro %}
+
+
+{#
+  One labelled form field, with its error message and an optional hint.
+
+  Every field in a form has the same five parts -- a wrapper that turns red on
+  error, a label tied to the input, the input holding what was typed, the
+  error message, and a hint -- and the aria-invalid / aria-describedby wiring
+  that makes the error reach a screen reader. Written once here; before this,
+  checkout.html repeated it by hand for each field.
+
+      {{ form_field("title", "Title", values.title, errors) }}
+      {{ form_field("price", "Price", values.price, errors,
+                    hint="In dollars.", inputmode="decimal") }}
+
+  Any extra keyword arguments become attributes on the input (inputmode, list,
+  maxlength...). `kwargs` is a Jinja built-in: inside a macro it collects
+  keyword arguments the macro did not name. |xmlattr turns them into
+  attributes AND escapes their values, so nothing passed here can break out
+  of the tag.
+
+  type="textarea" draws a <textarea> instead of an <input>.
+#}
+{% macro form_field(name, label, value, errors, type="text", hint="") %}
+  {% set error = errors.get(name) %}
+  {# The ids of whatever describes this field: its error, its hint, both or
+     neither. One expression, because appending to a list needs Jinja's
+     optional `do` extension, which this app does not load. #}
+  {% set described = (["error-" ~ name] if error else [])
+                   + (["hint-" ~ name] if hint else []) %}
+
+  <div class="field{% if error %} field--error{% endif %}">
+    <label for="{{ name }}">{{ label }}</label>
+
+    {% if type == "textarea" %}
+      <textarea id="{{ name }}" name="{{ name }}" rows="5"
+                {%- if error %} aria-invalid="true"{% endif %}
+                {%- if described %} aria-describedby="{{ described | join(' ') }}"{% endif %}
+                {{ kwargs | xmlattr }}>{{ value }}</textarea>
+    {% else %}
+      <input type="{{ type }}" id="{{ name }}" name="{{ name }}" value="{{ value }}"
+             {%- if error %} aria-invalid="true"{% endif %}
+             {%- if described %} aria-describedby="{{ described | join(' ') }}"{% endif %}
+             {{ kwargs | xmlattr }}>
+    {% endif %}
+
+    {% if error %}
+      <p class="field__error small" id="error-{{ name }}">{{ error }}</p>
+    {% endif %}
+    {% if hint %}
+      <p class="field__hint muted small" id="hint-{{ name }}">{{ hint }}</p>
+    {% endif %}
+  </div>
+{% endmacro %}

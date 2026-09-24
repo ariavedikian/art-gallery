@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{#
+  Every order, newest first, with the one action the admin can take today:
+  marking a paid order shipped.
+
+  The Ship button appears only where ORDER_TRANSITIONS allows it -- but, like
+  every button on this site, that is a courtesy. change_order_status() in
+  app.py enforces the same rule in its own WHERE clause, so a hand-written
+  POST, or a double-click, cannot ship an order twice or ship an unpaid one.
+#}
+
+{% block title %}Orders — Admin — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+        <li aria-current="page">Orders</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Gallery staff</p>
+      <h1 class="display">Orders</h1>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <caption class="visually-hidden">All orders, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Order</th>
+              <th scope="col">Buyer</th>
+              <th scope="col" class="admin-table__number">Works</th>
+              <th scope="col" class="admin-table__number">Total</th>
+              <th scope="col">Status</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for order in orders %}
+              <tr>
+                <td>
+                  {# The same receipt page the buyer sees. #}
+                  <a href="{{ url_for('order_page', reference=order.reference) }}"><code class="order__reference">{{ order.reference }}</code></a>
+                  <span class="muted small admin-table__sub">{{ order.placed_at | placed }}</span>
+                </td>
+                <td>{{ order.customer_name }}</td>
+                <td class="admin-table__number">{{ order.work_count }}</td>
+                <td class="admin-table__number price__amount">{{ order.subtotal_cents | usd }}</td>
+                <td><span class="tag">{{ order.status | order_status }}</span></td>
+                <td>
+                  {% if "shipped" in transitions.get(order.status, ()) %}
+                    <form method="post" action="{{ url_for('admin_order_ship', reference=order.reference) }}">
+                      <button class="button button--quiet button--small" type="submit">
+                        Mark shipped<span class="visually-hidden"> — {{ order.reference }}</span>
+                      </button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">No orders yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

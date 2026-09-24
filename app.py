@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 16 (part 1): admin accounts and a locked admin area.
+Stage 16: admin accounts, and a CMS for the collection and orders.
 
 HTTP is stateless — two requests from the same visitor arrive as strangers —
 so a cart has to be stored somewhere and handed back with every request. This
@@ -27,9 +27,11 @@ from the terminal with `flask --app app create-admin <name>`.
 
 import functools
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -548,6 +550,48 @@ ORDER_STATUSES = {
 }
 
 
+# The summary columns for a list of orders, shared by the visitor's list and
+# the admin's. customer_name is included for the admin; the visitor's page
+# simply does not show it.
+_ORDER_SUMMARY_SELECT = """
+    SELECT o.id, o.reference, o.customer_name, o.subtotal_cents, o.status,
+           o.placed_at,
+           COUNT(oi.id) AS line_count,
+           COALESCE(SUM(oi.quantity), 0) AS work_count
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+"""
+
+# Which status may become which. Stage 13 deliberately left this unwritten
+# until something could change a status; the admin is the first thing that
+# can. Stage 14 adds pending -> paid and pending -> cancelled for the webhook.
+ORDER_TRANSITIONS = {
+    "paid": {"shipped"},
+}
+
+
+def change_order_status(reference, new_status):
+    """Move an order to new_status, if the rules allow it from where it is now.
+
+    The rule is enforced INSIDE the UPDATE, as a WHERE clause, not by reading
+    the status first and deciding in Python. Same reason as the inventory
+    claim: read-then-write leaves a gap, and a double-click on "Mark shipped"
+    fits inside it. Here, the second click finds the order no longer 'paid',
+    changes zero rows, and returns False.
+    """
+    allowed_from = sorted(old for old, targets in ORDER_TRANSITIONS.items()
+                          if new_status in targets)
+    if not allowed_from:
+        raise ValueError(f"no status may become {new_status!r}")
+
+    placeholders = ", ".join("?" * len(allowed_from))
+    cursor = get_db().execute(f"""
+        UPDATE orders SET status = ?
+         WHERE reference = ? AND status IN ({placeholders})
+    """, (new_status, reference, *allowed_from))
+    return cursor.rowcount == 1
+
+
 def get_remembered_orders():
     """The references this browser has kept, newest first.
 
@@ -595,15 +639,21 @@ def get_orders_by_references(references):
 
     placeholders = ", ".join("?" * len(references))
     return query_db(f"""
-        SELECT o.id, o.reference, o.subtotal_cents, o.status, o.placed_at,
-               COUNT(oi.id) AS line_count,
-               COALESCE(SUM(oi.quantity), 0) AS work_count
-          FROM orders o
-          LEFT JOIN order_items oi ON oi.order_id = o.id
+        {_ORDER_SUMMARY_SELECT}
          WHERE o.reference IN ({placeholders})
          GROUP BY o.id
          ORDER BY o.placed_at DESC, o.id DESC
     """, references)
+
+
+def get_all_orders():
+    """Every order, newest first, for the admin. Same summary columns as the
+    visitor's own list -- one SELECT, two audiences."""
+    return query_db(f"""
+        {_ORDER_SUMMARY_SELECT}
+         GROUP BY o.id
+         ORDER BY o.placed_at DESC, o.id DESC
+    """)
 
 
 # --- Checkout ----------------------------------------------------------------
@@ -935,6 +985,238 @@ def set_admin_password(username, password):
     else:
         db.execute("UPDATE admins SET password_hash = ? WHERE username = ?",
                    (password_hash, username))
+
+
+# --- Admin: editing the collection -------------------------------------------
+
+PLACEHOLDER_DIR = Path(app.static_folder) / "images" / "placeholders"
+IMAGE_SUFFIXES = {".svg", ".jpg", ".jpeg", ".png", ".webp"}
+
+# The longest each text field may be. Not a database rule -- SQLite would store
+# a novel in a TEXT column -- but a sanity check on what reaches the page.
+TEXT_LIMITS = {"title": 200, "year": 40, "medium": 120, "category": 60,
+               "description": 4000}
+
+# Digits, optionally followed by a point and one or two more digits. Checked
+# BEFORE converting, so "1e5", "12.345" and "-5" are refused rather than
+# quietly turned into something the admin did not mean.
+_PRICE_PATTERN = re.compile(r"\d+(\.\d{1,2})?")
+
+# The columns the CMS writes, in one list shared by INSERT and UPDATE so the
+# two can never disagree. These are names WE wrote, so building the SQL from
+# them is structure, not user input -- the values still travel as ? params.
+_ARTWORK_WRITE_COLUMNS = (
+    "artist_id", "title", "year", "medium", "category", "description",
+    "price_cents", "available_for_purchase", "inventory_quantity",
+    "is_featured", "image", "image_width", "image_height", "display_order",
+)
+
+
+def image_choices():
+    """The image paths the form may offer: the placeholder files that exist.
+
+    Read from the folder rather than typed into a list, so a new placeholder
+    file appears in the menu without touching code. Stage 17 replaces this
+    with real uploads.
+    """
+    return sorted(f"placeholders/{path.name}" for path in PLACEHOLDER_DIR.iterdir()
+                  if path.suffix.lower() in IMAGE_SUFFIXES)
+
+
+def parse_price(text):
+    """"$4,800.50" -> 480050 cents, or None if it is not a price.
+
+    Decimal, never float. float("4800.10") is stored in binary as something
+    fractionally different from 4800.10, and multiplying by 100 can then land
+    a cent off. Decimal does arithmetic in base ten, exactly as written.
+    """
+    cleaned = text.strip().replace("$", "").replace(",", "")
+    if not _PRICE_PATTERN.fullmatch(cleaned):
+        return None
+    return int(Decimal(cleaned) * 100)
+
+
+def price_for_input(cents):
+    """480050 -> "4800.50", for putting a stored price back in the form.
+
+    Integer division and remainder, so no float is involved on the way out
+    either.
+    """
+    return f"{cents // 100}.{cents % 100:02d}"
+
+
+def parse_whole_number(text, low, high):
+    """The int in text if it is a whole number from low to high, else None."""
+    text = text.strip()
+    if not text.isdigit():
+        return None
+    number = int(text)
+    return number if low <= number <= high else None
+
+
+def get_artwork_for_edit(artwork_id):
+    """One artwork's STORED columns, as the edit form needs them.
+
+    Not get_artwork(): that returns the public shape -- artist name rather
+    than artist_id, a derived status, no display_order. The form edits the
+    stored facts, so it reads the stored facts.
+    """
+    return query_db(f"""
+        SELECT id, {", ".join(_ARTWORK_WRITE_COLUMNS)}
+          FROM artworks WHERE id = ?
+    """, (artwork_id,), one=True)
+
+
+def artwork_form_values(artwork=None):
+    """What the form fields show: an existing work's values, or new defaults.
+
+    Everything becomes a string, because that is what a form field holds and
+    what comes back when it is submitted. Checkboxes are the exception: they
+    are just ticked or not.
+    """
+    if artwork is None:
+        return {"artist_id": "", "title": "", "year": "", "medium": "",
+                "category": "", "description": "", "price": "",
+                "inventory_quantity": "1", "available_for_purchase": True,
+                "is_featured": False, "image": "", "image_width": "",
+                "image_height": "", "display_order": "100"}
+
+    return {
+        "artist_id": str(artwork["artist_id"]),
+        "title": artwork["title"],
+        "year": artwork["year"] or "",
+        "medium": artwork["medium"],
+        "category": artwork["category"],
+        "description": artwork["description"],
+        "price": price_for_input(artwork["price_cents"]),
+        "inventory_quantity": str(artwork["inventory_quantity"]),
+        "available_for_purchase": bool(artwork["available_for_purchase"]),
+        "is_featured": bool(artwork["is_featured"]),
+        "image": artwork["image"],
+        "image_width": str(artwork["image_width"]),
+        "image_height": str(artwork["image_height"]),
+        "display_order": str(artwork["display_order"]),
+    }
+
+
+def validate_artwork(form):
+    """Check a submitted artwork form. Returns (values, errors, record).
+
+    values  what was typed, as strings, so a rejected form comes back intact
+    errors  field name -> message; empty when all is well
+    record  the converted values ready for the database, or None on errors
+
+    Same shape as validate_checkout: the server is the only validation that
+    counts, and the admin form has novalidate on it for the same reason.
+    """
+    values = {name: form.get(name, "").strip() for name in (
+        "artist_id", "title", "year", "medium", "category", "description",
+        "price", "inventory_quantity", "image", "image_width",
+        "image_height", "display_order")}
+
+    # An UNTICKED checkbox sends nothing at all -- not "off", not "0", just an
+    # absent name. So "ticked" can only mean "the name is present".
+    values["available_for_purchase"] = "available_for_purchase" in form
+    values["is_featured"] = "is_featured" in form
+
+    errors = {}
+
+    # Each value checked against a known set, or a pattern, or a range.
+    # Nothing from the form is trusted because the menu only offered good
+    # options: a POST can be written by hand with any value at all.
+    artist_ids = {artist["id"] for artist in get_artists()}
+    artist_id = int(values["artist_id"]) if values["artist_id"].isdigit() else None
+    if artist_id not in artist_ids:
+        errors["artist_id"] = "Choose an artist."
+
+    for name in ("title", "medium", "category", "description"):
+        if not values[name]:
+            errors[name] = "Required."
+    for name, limit in TEXT_LIMITS.items():
+        if len(values[name]) > limit:
+            errors[name] = f"Keep this under {limit} characters."
+
+    price_cents = parse_price(values["price"])
+    if price_cents is None:
+        errors["price"] = "A price in dollars, like 4800 or 4,800.50."
+
+    inventory = parse_whole_number(values["inventory_quantity"], 0, 10000)
+    if inventory is None:
+        errors["inventory_quantity"] = "A whole number from 0 to 10,000."
+
+    if values["image"] not in image_choices():
+        errors["image"] = "Choose an image."
+
+    width = parse_whole_number(values["image_width"], 1, 20000)
+    height = parse_whole_number(values["image_height"], 1, 20000)
+    if width is None:
+        errors["image_width"] = "The image's width in pixels."
+    if height is None:
+        errors["image_height"] = "The image's height in pixels."
+
+    display_order = parse_whole_number(values["display_order"], 0, 100000)
+    if display_order is None:
+        errors["display_order"] = "A whole number. Lower numbers hang first."
+
+    if errors:
+        return values, errors, None
+
+    record = {
+        "artist_id": artist_id,
+        "title": values["title"],
+        # A blank year becomes NULL -- "unknown" -- rather than an empty
+        # string, which would mean "deliberately blank". Schema.sql draws the
+        # same distinction.
+        "year": values["year"] or None,
+        "medium": values["medium"],
+        "category": values["category"],
+        "description": values["description"],
+        "price_cents": price_cents,
+        "available_for_purchase": int(values["available_for_purchase"]),
+        "inventory_quantity": inventory,
+        "is_featured": int(values["is_featured"]),
+        "image": values["image"],
+        "image_width": width,
+        "image_height": height,
+        "display_order": display_order,
+    }
+    return values, {}, record
+
+
+def insert_artwork(record):
+    """Add a new artwork. Returns its id."""
+    columns = ", ".join(_ARTWORK_WRITE_COLUMNS)
+    placeholders = ", ".join("?" * len(_ARTWORK_WRITE_COLUMNS))
+    cursor = get_db().execute(
+        f"INSERT INTO artworks ({columns}) VALUES ({placeholders})",
+        [record[column] for column in _ARTWORK_WRITE_COLUMNS])
+    return cursor.lastrowid
+
+
+def update_artwork(artwork_id, record, loaded_inventory):
+    """Save an edited artwork -- unless its stock changed since the form loaded.
+
+    loaded_inventory is the stock the form showed when it was opened, carried
+    through a hidden field. The UPDATE only matches if the stock is STILL that
+    number. If a sale happened in between, it matches nothing and returns
+    False, rather than writing the old number back over the sale.
+
+    That is optimistic concurrency: assume nobody else will interfere, but
+    check at the moment of writing. Only the stock is guarded, because it is
+    the only column that anything other than the admin ever changes.
+    """
+    assignments = ", ".join(f"{column} = ?" for column in _ARTWORK_WRITE_COLUMNS)
+    cursor = get_db().execute(
+        f"UPDATE artworks SET {assignments} WHERE id = ? AND inventory_quantity = ?",
+        [record[column] for column in _ARTWORK_WRITE_COLUMNS]
+        + [artwork_id, loaded_inventory])
+    return cursor.rowcount == 1
+
+
+def count_sales(artwork_id):
+    """How many order lines refer to this work. Above zero, it cannot be deleted."""
+    return query_db("SELECT COUNT(*) AS n FROM order_items WHERE artwork_id = ?",
+                    (artwork_id,), one=True)["n"]
 
 
 # --- Template helpers --------------------------------------------------------
@@ -1527,6 +1809,139 @@ def admin_dashboard():
     whether it is featured, none of which the public pages display.
     """
     return render_template("admin/dashboard.html", artworks=search_artworks())
+
+
+def _artwork_form(template_values, errors, artwork_id=None, loaded_inventory=None,
+                  status=200):
+    """Render the artwork form, for creating or editing. One template, both jobs."""
+    return render_template(
+        "admin/artwork_form.html",
+        values=template_values, errors=errors,
+        artwork_id=artwork_id, loaded_inventory=loaded_inventory,
+        artists=get_artists(), categories=get_categories(),
+        images=image_choices(),
+    ), status
+
+
+@app.get("/admin/artworks/new")
+@admin_required
+def admin_artwork_new():
+    return _artwork_form(artwork_form_values(), {})
+
+
+@app.post("/admin/artworks/new")
+@admin_required
+def admin_artwork_create():
+    values, errors, record = validate_artwork(request.form)
+    if errors:
+        return _artwork_form(values, errors, status=400)
+
+    artwork_id = insert_artwork(record)
+    flash(f"Added \u201c{record['title']}\u201d (#{artwork_id}).", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.get("/admin/artworks/<int:artwork_id>/edit")
+@admin_required
+def admin_artwork_edit(artwork_id):
+    artwork = get_artwork_for_edit(artwork_id)
+    if artwork is None:
+        abort(404)
+    return _artwork_form(artwork_form_values(artwork), {}, artwork_id,
+                         loaded_inventory=artwork["inventory_quantity"])
+
+
+@app.post("/admin/artworks/<int:artwork_id>/edit")
+@admin_required
+def admin_artwork_update(artwork_id):
+    if get_artwork_for_edit(artwork_id) is None:
+        abort(404)
+
+    loaded = parse_whole_number(request.form.get("loaded_inventory", ""), 0, 10**9)
+    values, errors, record = validate_artwork(request.form)
+    if errors or loaded is None:
+        return _artwork_form(values, errors, artwork_id, loaded, status=400)
+
+    if not update_artwork(artwork_id, record, loaded):
+        # The stock moved while the form was open -- almost certainly a sale.
+        # Re-read what it is NOW, show it, and let the admin decide. The form
+        # keeps everything else they typed; only the stock needs a second look.
+        current = get_artwork_for_edit(artwork_id)
+        if current is None:
+            abort(404)
+        now = current["inventory_quantity"]
+        values["inventory_quantity"] = str(now)
+        errors = {"inventory_quantity":
+                  f"Stock changed from {loaded} to {now} while you were editing "
+                  f"(probably a sale). Check this number, then save again."}
+        # 409 Conflict: the request was fine; the work's state moved under it.
+        return _artwork_form(values, errors, artwork_id, now, status=409)
+
+    flash(f"Saved \u201c{record['title']}\u201d.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.get("/admin/artworks/<int:artwork_id>/delete")
+@admin_required
+def admin_artwork_delete_confirm(artwork_id):
+    """Ask before deleting. A page, not a JavaScript confirm(), so the
+    question is still asked with JavaScript off."""
+    artwork = get_artwork(artwork_id)
+    if artwork is None:
+        abort(404)
+    return render_template("admin/artwork_delete.html", artwork=artwork,
+                           sales=count_sales(artwork_id))
+
+
+@app.post("/admin/artworks/<int:artwork_id>/delete")
+@admin_required
+def admin_artwork_delete(artwork_id):
+    """Delete a work -- unless it has been sold.
+
+    The confirmation page already warns when a work has sales. But that page
+    is a courtesy; THIS is the rule, and the rule belongs to the database:
+    order_items.artwork_id is ON DELETE RESTRICT, so SQLite itself refuses.
+    We catch its refusal and explain it, rather than check first and hope
+    nothing changed between the check and the DELETE.
+    """
+    artwork = get_artwork(artwork_id)
+    if artwork is None:
+        abort(404)
+
+    try:
+        get_db().execute("DELETE FROM artworks WHERE id = ?", (artwork_id,))
+    except sqlite3.IntegrityError:
+        flash(f"\u201c{artwork['title']}\u201d has been sold, so it cannot be "
+              "deleted: its orders still point at it. To take it off sale, "
+              "untick \u201cOffered for sale\u201d instead.", "error")
+        return redirect(url_for("admin_artwork_edit", artwork_id=artwork_id))
+
+    flash(f"Deleted \u201c{artwork['title']}\u201d (#{artwork_id}).", "notice")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.get("/admin/orders")
+@admin_required
+def admin_orders():
+    return render_template("admin/orders.html", orders=get_all_orders(),
+                           transitions=ORDER_TRANSITIONS)
+
+
+@app.post("/admin/orders/<reference>/ship")
+@admin_required
+def admin_order_ship(reference):
+    if change_order_status(reference, "shipped"):
+        flash(f"Order {reference} marked shipped.", "success")
+        return redirect(url_for("admin_orders"))
+
+    # Nothing changed. Either there is no such order, or it is not in a state
+    # that may become shipped -- already shipped, say, from a double-click.
+    order = get_order(reference)
+    if order is None:
+        abort(404)
+    flash(f"Order {reference} is {order_status(order['status']).lower()}; "
+          "only paid orders can be marked shipped.", "notice")
+    return redirect(url_for("admin_orders"))
 
 
 @app.after_request

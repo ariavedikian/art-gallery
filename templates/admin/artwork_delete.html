@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{#
+  "Are you sure?" as a page rather than a JavaScript confirm(), so the question
+  is asked with JavaScript off too. Only this page's POST deletes anything.
+
+  `sales` is how many order lines refer to the work. If there are any, the
+  database will refuse the delete (ON DELETE RESTRICT), so the page says so
+  up front instead of offering a button that is bound to fail. The page is a
+  courtesy; the foreign key is the rule.
+#}
+
+{% block title %}Delete artwork — Admin — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container admin-confirm">
+      <p class="eyebrow">Gallery staff</p>
+      <h1 class="display">Delete this work?</h1>
+
+      <p class="lead">
+        <span class="work-title">{{ artwork.title }}</span>
+        — {{ artwork.artist_name }}, {{ artwork.medium }} (#{{ artwork.id }})
+      </p>
+
+      {% if sales %}
+        <p class="field__error">This work appears on {{ sales }}
+          {{ "order" if sales == 1 else "orders" }}, so it cannot be deleted:
+          a sale is a record of something that happened, and its receipt still
+          points at the work.</p>
+        <p>To take it off the market, edit it and untick
+          <strong>Offered for sale</strong> instead.</p>
+        <p class="admin-form__actions">
+          <a class="button" href="{{ url_for('admin_artwork_edit', artwork_id=artwork.id) }}">Edit instead</a>
+          <a class="button button--quiet" href="{{ url_for('admin_dashboard') }}">Back</a>
+        </p>
+      {% else %}
+        <p>It will disappear from the site at once, including from any visitor's
+          cart. This cannot be undone.</p>
+        <form class="admin-form__actions" method="post"
+              action="{{ url_for('admin_artwork_delete', artwork_id=artwork.id) }}">
+          <button class="button button--danger" type="submit">Delete permanently</button>
+          <a class="button button--quiet" href="{{ url_for('admin_artwork_edit', artwork_id=artwork.id) }}">Keep it</a>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

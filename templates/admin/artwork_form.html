@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% from "macros.html" import form_field %}
+
+{#
+  Create or edit an artwork. One template for both jobs: `artwork_id` is set
+  when editing and None when creating, and that is the only difference.
+
+  On a rejected save the route re-renders this with `values` holding exactly
+  what was typed and `errors` saying what is wrong, so nothing is lost.
+#}
+
+{% set editing = artwork_id is not none %}
+
+{% block title %}{{ "Edit" if editing else "Add" }} artwork — Admin — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+        <li aria-current="page">{{ "Edit #" ~ artwork_id if editing else "Add artwork" }}</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Gallery staff</p>
+      <h1 class="display">{{ "Edit artwork" if editing else "Add artwork" }}</h1>
+
+      {% if errors %}
+        {# A summary at the top as well as the message by each field. On a
+           long form the first error can be well below the fold, and role=alert
+           makes a screen reader announce that the save did not happen. #}
+        <p class="field__error admin-form__summary" role="alert">
+          Nothing was saved. {{ errors | length }}
+          {{ "field needs" if errors | length == 1 else "fields need" }} attention below.
+        </p>
+      {% endif %}
+
+      <form class="admin-form" method="post" novalidate
+            action="{{ url_for('admin_artwork_update', artwork_id=artwork_id) if editing else url_for('admin_artwork_create') }}">
+
+        {% if editing %}
+          {# The stock this form showed when it was opened. update_artwork()
+             only saves if the stock is STILL this number, so a sale made
+             while the form was open cannot be silently overwritten. #}
+          <input type="hidden" name="loaded_inventory" value="{{ loaded_inventory }}">
+        {% endif %}
+
+        <fieldset class="admin-form__group">
+          <legend>The work</legend>
+
+          <div class="field{% if errors.artist_id %} field--error{% endif %}">
+            <label for="artist_id">Artist</label>
+            <select id="artist_id" name="artist_id"
+                    {%- if errors.artist_id %} aria-invalid="true" aria-describedby="error-artist_id"{% endif %}>
+              <option value="">Choose…</option>
+              {% for artist in artists %}
+                {# The form sends back a string, so compare strings. #}
+                <option value="{{ artist.id }}" {% if values.artist_id == artist.id | string %}selected{% endif %}>{{ artist.name }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.artist_id %}<p class="field__error small" id="error-artist_id">{{ errors.artist_id }}</p>{% endif %}
+          </div>
+
+          {{ form_field("title", "Title", values.title, errors, maxlength=200) }}
+          {{ form_field("year", "Date", values.year, errors,
+                        hint="Optional. Free text, since art dates can be approximate: c. 1955, 1962–63.",
+                        maxlength=40) }}
+          {{ form_field("medium", "Medium", values.medium, errors, maxlength=120) }}
+
+          {# list= ties the field to the <datalist> below: the browser offers
+             the categories already in use, which keeps "Painting" from
+             drifting into "painting" and "Paintings", while still allowing a
+             genuinely new one. #}
+          {{ form_field("category", "Category", values.category, errors,
+                        hint="Pick an existing category, or type a new one.",
+                        list="category-options", maxlength=60) }}
+          <datalist id="category-options">
+            {% for category in categories %}<option value="{{ category }}">{% endfor %}
+          </datalist>
+
+          {{ form_field("description", "Description", values.description, errors,
+                        type="textarea") }}
+        </fieldset>
+
+        <fieldset class="admin-form__group">
+          <legend>Sale</legend>
+
+          {# type="text", not "number". A number field refuses "4,800" and
+             "$4,800" outright, and its behaviour varies by browser and locale.
+             inputmode="decimal" still brings up a number keypad on a phone. #}
+          {{ form_field("price", "Price (USD)", values.price, errors,
+                        hint="In dollars, e.g. 4800 or 4,800.50. Stored exactly, in cents.",
+                        inputmode="decimal", autocomplete="off") }}
+
+          {{ form_field("inventory_quantity", "Stock", values.inventory_quantity, errors,
+                        hint="1 for a unique original; the number left for an edition; 0 when sold out.",
+                        inputmode="numeric") }}
+
+          {# Checkboxes: an UNticked box sends nothing at all, so the server
+             reads "ticked" as "the name is present". value="1" is only what
+             a ticked box sends; it is never compared against anything. #}
+          <div class="admin-form__check">
+            <input type="checkbox" id="available_for_purchase" name="available_for_purchase" value="1"
+                   {% if values.available_for_purchase %}checked{% endif %}>
+            <label for="available_for_purchase">Offered for sale</label>
+          </div>
+          <p class="field__hint muted small">Untick for a work that is on display
+            only. Its price is then hidden everywhere on the site.</p>
+        </fieldset>
+
+        <fieldset class="admin-form__group">
+          <legend>Display</legend>
+
+          <div class="field{% if errors.image %} field--error{% endif %}">
+            <label for="image">Image</label>
+            <select id="image" name="image"
+                    {%- if errors.image %} aria-invalid="true" aria-describedby="error-image"{% endif %}>
+              <option value="">Choose…</option>
+              {% for image in images %}
+                <option value="{{ image }}" {% if values.image == image %}selected{% endif %}>{{ image }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.image %}<p class="field__error small" id="error-image">{{ errors.image }}</p>{% endif %}
+            <p class="field__hint muted small">Placeholders only for now. Uploading
+              real images arrives at Stage 17.</p>
+          </div>
+
+          <div class="admin-form__pair">
+            {{ form_field("image_width", "Width (px)", values.image_width, errors, inputmode="numeric") }}
+            {{ form_field("image_height", "Height (px)", values.image_height, errors, inputmode="numeric") }}
+          </div>
+          <p class="field__hint muted small">The image's real pixel size, so the
+            page can reserve its space before it loads. Stage 17 will read this
+            from the file instead.</p>
+
+          {{ form_field("display_order", "Running order", values.display_order, errors,
+                        hint="Lower numbers hang first. Leave gaps (10, 20, 30…) so a work can be slotted in between.",
+                        inputmode="numeric") }}
+
+          <div class="admin-form__check">
+            <input type="checkbox" id="is_featured" name="is_featured" value="1"
+                   {% if values.is_featured %}checked{% endif %}>
+            <label for="is_featured">Featured on the homepage</label>
+          </div>
+        </fieldset>
+
+        <div class="admin-form__actions">
+          <button class="button" type="submit">{{ "Save changes" if editing else "Add artwork" }}</button>
+          <a class="button button--quiet" href="{{ url_for('admin_dashboard') }}">Cancel</a>
+
+          {# A link to a confirmation PAGE, not a delete button. Deleting
+             happens only on that page's POST. #}
+          {% if editing %}
+            <a class="admin-form__delete" href="{{ url_for('admin_artwork_delete_confirm', artwork_id=artwork_id) }}">Delete this work…</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </section>
+
+{% endblock %}

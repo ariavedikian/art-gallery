@@ -3,7 +3,7 @@
 {#
   The admin dashboard: every artwork, as the gallery sees it.
 
-  Read-only in part 1. Part 2 adds editing, creating and deleting.
+  Each row links to its edit form; adding a work is the button at the top.
 
   The rows come from search_artworks(), the same function behind the public
   All works page. What differs is what gets SHOWN: the price of a work that is
@@ -23,8 +23,12 @@
     <div class="container">
       <p class="eyebrow">Gallery staff</p>
       <h1 class="display">Collection</h1>
-      <p class="lead">Every work, in the gallery's running order. Editing
-        arrives in the next part of this stage.</p>
+      <p class="lead">Every work, in the gallery's running order.</p>
+
+      <p class="admin-form__actions">
+        <a class="button" href="{{ url_for('admin_artwork_new') }}">Add artwork</a>
+        <a class="button button--quiet" href="{{ url_for('admin_orders') }}">Orders</a>
+      </p>
 
       {#
         A real <table>, because this IS tabular data: every row has the same
@@ -45,6 +49,7 @@
               <th scope="col" class="admin-table__number">Price</th>
               <th scope="col" class="admin-table__number">Stock</th>
               <th scope="col">Featured</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -69,9 +74,12 @@
                 <td class="admin-table__number price__amount">{{ art.price_cents | usd }}</td>
                 <td class="admin-table__number">{{ art.inventory_quantity }}</td>
                 <td>{{ "Yes" if art.is_featured else "—" }}</td>
+                <td>
+                  <a href="{{ url_for('admin_artwork_edit', artwork_id=art.id) }}">Edit<span class="visually-hidden"> #{{ art.id }}</span></a>
+                </td>
               </tr>
             {% else %}
-              <tr><td colspan="5" class="muted">No artworks yet.</td></tr>
+              <tr><td colspan="6" class="muted">No artworks yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>

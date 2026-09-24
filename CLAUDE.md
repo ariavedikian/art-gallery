@@ -208,6 +208,29 @@ styling, cluttered layouts.
   `noindex`. The public site never links to `/admin`.
 - **The session cookie is `SameSite=Lax`**, set explicitly rather than trusted
   to browser defaults. Full CSRF protection is Stage 20.
+- **Money typed by a person goes through `Decimal`, never `float`.**
+  `parse_price()` checks the text against a strict pattern first, then converts
+  exactly; `float("19.99") * 100` lands a cent short. Price fields are
+  `type="text" inputmode="decimal"`, not `type="number"`.
+- **An unticked checkbox sends nothing.** "Ticked" means "the name is present
+  in the form", never a comparison with a value.
+- **Admin edits to stock are optimistic-concurrency writes.** The form carries
+  the stock it loaded; `update_artwork()` saves only
+  `WHERE id = ? AND inventory_quantity = ?`, and a mismatch is a 409 with the
+  form intact. Stock is guarded because it is the only column something other
+  than the admin writes.
+- **Status transitions are rules in `ORDER_TRANSITIONS`**, enforced in the
+  `WHERE` clause of `change_order_status()`, so a repeat or a disallowed
+  change updates zero rows. Stage 14 adds `pending → paid/cancelled`.
+- **Destructive actions get a confirmation page** (GET asks, POST acts), not a
+  JavaScript `confirm()`. The page predicts refusals; the database enforces
+  them (a sold work cannot be deleted: ON DELETE RESTRICT).
+- **Form fields use the `form_field` macro** in macros.html (label, value,
+  error, hint, aria wiring). Extra attributes go through `kwargs | xmlattr`,
+  which escapes them. `checkout.html` still repeats the markup by hand; fold
+  it in at Stage 22.
+- **Jinja's `do` extension is not loaded.** Build lists in one expression
+  instead of appending.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -284,6 +307,7 @@ python tests/test_checkout_race.py
 python tests/test_order_snapshot.py
 python tests/test_api.py
 python tests/test_admin.py
+python tests/test_cms.py
 ```
 
 Create (or re-password) an admin. The database starts with none, and
@@ -303,7 +327,8 @@ art-gallery/
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
 │                  #   checkout, order, orders, 404, macros;
-│                  #   admin/ holds login and dashboard
+│                  #   admin/ holds login, dashboard, artwork_form,
+│                  #   artwork_delete, orders
 ├── static/           # css/style.css, js/{lightbox,filter,cart}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
@@ -358,14 +383,17 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       are useful. `GET /api/artworks` (same filters as All works),
       `GET /api/artworks/<id>`, `POST /api/cart`; Add to cart uses it via
       `static/js/cart.js`, falling back to the plain form.
-- [~] **16 — Admin / CMS.** Add/edit/delete artwork, pricing, availability,
+- [x] **16 — Admin / CMS.** Add/edit/delete artwork, pricing, availability,
       featured flag. Simple auth. Split in two, like Stage 10.
-      **Part 1 done:** `admins` table with hashed passwords,
-      `flask create-admin`, login/logout, `@admin_required`, safe `next=`,
-      read-only dashboard. **Part 2 to do:** create/edit/delete artworks with
-      validation, and marking orders shipped (`paid → shipped`).
+      **Part 1:** `admins` table with hashed passwords, `flask create-admin`,
+      login/logout, `@admin_required`, safe `next=`, dashboard.
+      **Part 2:** create/edit/delete artworks with server-side validation,
+      optimistic concurrency on stock, delete refused for sold works, and
+      `paid → shipped` via `ORDER_TRANSITIONS`.
 - [ ] **17 — Image management.** Static file organisation, naming conventions,
-      optimisation, safe upload concepts.
+      optimisation, safe upload concepts. The admin form currently picks from
+      existing placeholders and takes width/height by hand; Stage 17 should
+      read dimensions from the file and add real uploads.
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard

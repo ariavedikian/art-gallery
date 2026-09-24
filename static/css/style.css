@@ -982,6 +982,67 @@ a.feature__media:hover img { transform: scale(1.03); }
 
 th.admin-table__number { text-align: right; }
 
+/* --- the artwork form --- */
+
+.admin-form { margin-top: var(--space-4); max-width: 44rem; }
+.admin-form > * + * { margin-top: var(--space-4); }
+.admin-form__summary { margin-top: var(--space-3); }
+
+/* A fieldset groups related fields, and its legend names the group for a
+   screen reader: "Sale, group" before "Price". */
+.admin-form__group {
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) 0 0;
+  margin: 0;
+}
+
+.admin-form__group > * + * { margin-top: var(--space-3); }
+
+.admin-form__group legend {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding-right: var(--space-2);
+}
+
+.admin-form__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.admin-form__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.admin-form__check input { width: 1.1rem; height: 1.1rem; accent-color: var(--ink); }
+
+.admin-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Set apart from Save and Cancel, and quiet: deleting should never be the
+   thing a hurried click lands on. It only leads to a confirmation page. */
+.admin-form__delete {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 0.875rem;
+}
+
+.admin-confirm { max-width: 40rem; }
+.admin-confirm > * + * { margin-top: var(--space-3); }
+
+.button--danger { background: var(--accent); border-color: var(--accent); }
+.button--danger:hover { background: transparent; color: var(--accent); }
+
 
 /* --- 20. Lightbox ---------------------------------------------------------- */
 
