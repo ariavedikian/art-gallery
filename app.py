@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 12: checkout.
+Stage 15: a JSON API alongside the pages.
 
 HTTP is stateless — two requests from the same visitor arrive as strangers —
 so a cart has to be stored somewhere and handed back with every request. This
@@ -14,7 +14,11 @@ arrive from the client.
 
 Checkout turns that cart into an order inside a single transaction: the
 inventory is claimed and the order is written together, or neither happens.
-The payment step is a clearly-labelled MOCK until Stage 14.
+The payment step is a clearly-labelled MOCK until Stage 14 (deferred).
+
+Under /api/ the same data is served as JSON rather than HTML. Those routes
+call the same data-access functions as the pages, so a rule written once --
+the filters, the `status` rule, the cart limits -- serves both.
 """
 
 import os
@@ -461,6 +465,45 @@ def allowed_quantity(artwork):
     return min(artwork["inventory_quantity"], MAX_PER_LINE)
 
 
+def add_to_cart(artwork, quantity):
+    """The rules for adding a work, written once. Returns (outcome, message).
+
+    outcome is one of:
+        "added"        the full quantity went in
+        "capped"       it went in, but was reduced to what is allowed
+        "unavailable"  nothing went in: the work is sold or not for sale
+
+    Two routes add to the cart -- the HTML form (/cart/add) and the API
+    (/api/cart) -- and they differ only in how they ANSWER: one flashes a
+    message and redirects, the other returns JSON. What is allowed must not
+    differ, so it lives here and both call it. If the API had its own copy of
+    these checks, the two would drift the first time either was edited.
+
+    The message is shared too, so a visitor reads the same words whichever
+    path their click took.
+    """
+    if artwork["status"] != "for-sale":
+        return "unavailable", "That work is not available to buy."
+
+    cart = get_cart()
+    key = str(artwork["id"])
+    allowed = allowed_quantity(artwork)
+    wanted = cart.get(key, 0) + max(quantity, 1)
+
+    if wanted > allowed:
+        cart[key] = allowed
+        outcome = "capped"
+        message = (f"Only {allowed} of that work can be added. Your cart now "
+                   f"holds {allowed}.")
+    else:
+        cart[key] = wanted
+        outcome = "added"
+        message = "Added to your cart."
+
+    save_cart(cart)
+    return outcome, message
+
+
 # --- Remembered orders -------------------------------------------------------
 # There are no accounts yet, so "your orders" can only mean the orders THIS
 # BROWSER remembers. The session holds a list of references; the database holds
@@ -831,18 +874,28 @@ def artist_page(slug):
     )
 
 
+def filters_from(args):
+    """Read the collection filters out of a query string.
+
+    request.args is the query string: /gallery?artist=artist-two&q=oil
+    .get() with a default turns a missing parameter into an empty filter, so a
+    bare URL and a cleared form take the same path.
+
+    Used by the All works page AND by /api/artworks, so both understand
+    exactly the same filters. search_artworks() then validates the values.
+    """
+    return {
+        "q": args.get("q", "").strip(),
+        "artist": args.get("artist", ""),
+        "category": args.get("category", ""),
+        "status": args.get("status", ""),
+        "price": args.get("price", ""),
+    }
+
+
 @app.route("/gallery")
 def gallery():
-    # request.args is the query string: /gallery?artist=artist-two&q=oil
-    # .get() with a default turns a missing parameter into an empty filter,
-    # so a bare /gallery and a cleared form take the same path.
-    filters = {
-        "q": request.args.get("q", "").strip(),
-        "artist": request.args.get("artist", ""),
-        "category": request.args.get("category", ""),
-        "status": request.args.get("status", ""),
-        "price": request.args.get("price", ""),
-    }
+    filters = filters_from(request.args)
 
     # The database returns only the matching rows, so the page is as small as
     # the result. The filters go back to the template as well, so the form can
@@ -905,29 +958,16 @@ def cart_add():
     if artwork is None:
         abort(404)
 
-    # The same `status` column the price line and the availability filter
-    # read. The button is only rendered for a work that is for sale, but a
-    # POST can be sent without ever loading that page, so the server checks
-    # again. A rule enforced only in the template is not enforced.
-    if artwork["status"] != "for-sale":
-        flash("That work is not available to buy.", "error")
+    # The rules -- including refusing a work that is not for sale, which the
+    # server must check even though the button is only shown for works that
+    # are -- live in add_to_cart(). This route only decides how to answer.
+    outcome, message = add_to_cart(artwork, quantity)
+
+    if outcome == "unavailable":
+        flash(message, "error")
         return redirect(url_for("artwork_page", artwork_id=artwork["id"]))
 
-    cart = get_cart()
-    key = str(artwork["id"])
-    allowed = allowed_quantity(artwork)
-    wanted = cart.get(key, 0) + max(quantity, 1)
-
-    if wanted > allowed:
-        wanted = allowed
-        flash(f"Only {allowed} of that work can be added. Your cart now "
-              f"holds {allowed}.", "notice")
-    else:
-        flash("Added to your cart.", "success")
-
-    cart[key] = wanted
-    save_cart(cart)
-
+    flash(message, "notice" if outcome == "capped" else "success")
     return redirect(url_for("cart"))
 
 
@@ -1099,6 +1139,149 @@ def order_page(reference):
                            items=get_order_items(order["id"]))
 
 
+# --- JSON API ----------------------------------------------------------------
+# The same data as the pages, as data rather than HTML, for any program that
+# wants it: this site's own JavaScript today, anything else later.
+#
+# Returning a dict from a Flask view sends it as JSON, with the
+# Content-Type: application/json header set for you.
+
+def artwork_json(artwork):
+    """One artwork in its PUBLIC shape.
+
+    Built field by field on purpose, rather than turning the whole row into a
+    dict. An API is a contract: the moment someone's code reads `price_cents`,
+    renaming or removing it breaks them. So nothing appears here by accident
+    -- not display_order, not is_featured, not whatever column gets added
+    next year -- only what we have decided to promise.
+
+    The business rules apply here exactly as they do on the page. The page
+    hides the price of a work that is not for sale, so the API does too: a
+    rule enforced in the HTML but leaked by the JSON was never enforced.
+
+    _external=True makes the URLs absolute (http://host/artwork/1). A program
+    reading this JSON has no page to be relative TO.
+    """
+    for_sale = artwork["status"] == "for-sale"
+
+    return {
+        "id": artwork["id"],
+        "title": artwork["title"],
+        "artist": {
+            "name": artwork["artist_name"],
+            "slug": artwork["artist_slug"],
+            "url": url_for("artist_page", slug=artwork["artist_slug"], _external=True),
+        },
+        "year": artwork["year"],
+        "medium": artwork["medium"],
+        "category": artwork["category"],
+        "description": artwork["description"],
+        "status": artwork["status"],
+
+        # null (Python's None) when the work cannot be bought, exactly as the
+        # page shows no price then. Whole cents, as stored: formatting money
+        # is the reader's job, and "$4,800" is useless to a program.
+        "price_cents": artwork["price_cents"] if for_sale else None,
+        "available_quantity": artwork["inventory_quantity"] if for_sale else 0,
+
+        "image": {
+            "url": url_for("static", filename="images/" + artwork["image"], _external=True),
+            "width": artwork["image_width"],
+            "height": artwork["image_height"],
+        },
+        "url": url_for("artwork_page", artwork_id=artwork["id"], _external=True),
+    }
+
+
+def api_error(status, message):
+    """An error, as JSON, with a status code that matches it.
+
+    A person reads a page; a program reads the number. So the number has to
+    be right, and the body has to be JSON too -- a program expecting JSON
+    that gets the HTML 404 page back has nothing it can parse.
+    """
+    return {"error": message}, status
+
+
+@app.get("/api/artworks")
+def api_artworks():
+    """The collection, taking the same filters as the All works page.
+
+    /api/artworks?status=for-sale&artist=artist-two
+
+    One call to search_artworks(), the same function /gallery uses: the query,
+    the validation of the filters and the ordering are all shared. This route
+    only chooses the format.
+    """
+    rows = search_artworks(**filters_from(request.args))
+    return {
+        "count": len(rows),
+        "artworks": [artwork_json(row) for row in rows],
+    }
+
+
+@app.get("/api/artworks/<int:artwork_id>")
+def api_artwork(artwork_id):
+    artwork = get_artwork(artwork_id)
+    if artwork is None:
+        return api_error(404, "No artwork with that id.")
+    return artwork_json(artwork)
+
+
+@app.post("/api/cart")
+def api_cart_add():
+    """Add a work to this visitor's cart, answering in JSON.
+
+    Expects a JSON body:  {"artwork_id": 2, "quantity": 1}
+
+    The cart is still the session cookie. fetch() sends cookies to its own
+    site by default, so a call from the page's JavaScript finds the same cart
+    the page itself shows.
+
+    get_json(silent=True) returns None, rather than raising, when the body is
+    not JSON or not labelled as JSON. Requiring the JSON label has a side
+    benefit: an ordinary HTML form on another website cannot send it, so this
+    endpoint is not reachable by the simplest cross-site trick. Cross-site
+    request forgery in general is Stage 20.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return api_error(400, 'Send a JSON object, e.g. {"artwork_id": 2}.')
+
+    artwork_id = data.get("artwork_id")
+    quantity = data.get("quantity", 1)
+
+    # JSON has its own types, and "2" (a string) is not 2 (a number). Checked
+    # rather than converted: an API that silently guesses what you meant hides
+    # the caller's bug instead of reporting it.
+    #
+    # The bool check looks odd and is necessary. In Python, True is an int
+    # (True == 1), so {"artwork_id": true} would pass isinstance(x, int) and
+    # quietly mean artwork 1.
+    for name, value in (("artwork_id", artwork_id), ("quantity", quantity)):
+        if not isinstance(value, int) or isinstance(value, bool):
+            return api_error(400, f"{name} must be a whole number.")
+
+    artwork = get_artwork(artwork_id)
+    if artwork is None:
+        return api_error(404, "No artwork with that id.")
+
+    outcome, message = add_to_cart(artwork, quantity)
+
+    if outcome == "unavailable":
+        # 409 Conflict: the request was well-formed, but the work's current
+        # state -- sold, or not for sale -- will not allow it.
+        return api_error(409, message)
+
+    return {
+        "outcome": outcome,
+        "message": message,
+        "quantity_in_cart": get_cart().get(str(artwork_id), 0),
+        "cart_count": cart_count(),
+        "cart_url": url_for("cart"),
+    }
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -1106,7 +1289,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 13}
+    return {"status": "ok", "stage": 15}
 
 
 # --- Error handlers ----------------------------------------------------------
@@ -1120,7 +1303,24 @@ def page_not_found(error):
     browsers, search engines and monitoring tools. The status code is part of
     the answer, not decoration.
     """
+    if request.path.startswith("/api/"):
+        return api_error(404, "Not found.")
     return render_template("404.html"), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """A real URL, asked for with the wrong method (GET /api/cart, say).
+
+    Under /api/ the answer is JSON, like every other API response. The Allow
+    header lists the methods that WOULD work, which is what the HTTP standard
+    asks a 405 to include. Anywhere else, Flask's default page is fine:
+    nobody reaches a 405 by clicking a link on this site.
+    """
+    if request.path.startswith("/api/"):
+        body, status = api_error(405, "That method is not allowed here.")
+        return body, status, {"Allow": ", ".join(sorted(error.valid_methods))}
+    return error
 
 
 if __name__ == "__main__":

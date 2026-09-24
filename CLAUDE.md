@@ -168,6 +168,26 @@ styling, cluttered layouts.
 - **Concurrency is tested with threads, never by hand.** Clicking through the
   site does one thing at a time and can never produce the situation the
   checkout transaction exists for. See `tests/test_checkout_race.py`.
+- **The API is a second format over the same functions.** `/api/...` routes
+  call the same data-access functions as the pages (`search_artworks`,
+  `get_artwork`) and the same rule functions (`add_to_cart`, `filters_from`).
+  A route chooses a format; it never re-implements a rule.
+- **The JSON shape is a contract.** `artwork_json()` builds each object field
+  by field; a new database column never appears in the API by accident.
+  `tests/test_api.py` pins the exact field list.
+- **Business rules apply to the API too.** No price for a work that is not
+  for sale, in JSON exactly as on the page.
+- **API errors are JSON with honest status codes**: 400 malformed, 404 not
+  found, 405 wrong method (with `Allow`), 409 refused by the work's state.
+  Outside `/api/` errors stay HTML.
+- **JSON types are checked, not coerced.** `"2"` is not `2`, and `true` is not
+  `1` even though Python's `bool` is an `int`.
+- **fetch() enhances a working form.** The form keeps a real `action=` and
+  gets `data-api=` for the script. On any failure the script falls back to
+  `form.submit()`, which does not re-fire the submit event.
+- **Elements JavaScript updates are always rendered**, hidden when empty
+  (the nav cart count), since a script cannot update an element that was
+  never in the page.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -182,6 +202,49 @@ styling, cluttered layouts.
   the alternating artist layout uses `:nth-of-type(even)`).
 - **Type:** Cormorant Garamond for display sizes only, Inter for text.
   Loaded from Google Fonts for now; self-host at Stage 19 for privacy and speed.
+
+## Deferred: Stage 14 (real payments)
+
+Stage 14 was skipped and still has to be done. Nothing from it is in the code
+yet apart from two installed, pinned dependencies (`stripe`, `python-dotenv`
+in `requirements.txt`). Checkout still uses the clearly-labelled mock.
+
+**To do before starting (you, not Claude):**
+
+- [ ] Create a Stripe account. Test mode needs no business details.
+- [ ] Get your **test** API keys from the Stripe dashboard (they start
+      `sk_test_`). Put them in a `.env` file yourself; `.env` is gitignored.
+      Never paste keys into a chat or commit them.
+- [ ] Install the Stripe CLI, which forwards webhooks to `localhost` while
+      developing.
+
+**To do in the code:**
+
+- [ ] Write `payments.py`, the one module that talks to Stripe. `app.py`
+      should never import `stripe` directly, so tests can swap in a fake and
+      a change of provider touches one file.
+- [ ] Refuse any key that is not a test key, in code.
+
+**The design worked out before it was deferred** (about our own code, not
+Stripe's):
+
+- A `ROLLBACK` can undo database rows but cannot un-charge a card, and the
+  payment now happens outside our request. So the single Stage 12
+  transaction becomes a lifecycle: claim the stock and write the order as
+  `pending`, commit, send the buyer to pay; the webhook later moves it to
+  `paid` or `cancelled`.
+- The success page the buyer returns to proves nothing. Only a
+  signature-verified webhook confirms a payment.
+- Every status change is a guarded check-and-claim, so duplicate or
+  out-of-order webhooks are harmless:
+  `UPDATE orders SET status = 'paid' WHERE reference = ? AND status = 'pending'`.
+- Cancelling is compensation, not rollback: a new transaction moves
+  `pending → cancelled` and returns the stock, with the same status guard
+  making sure stock comes back exactly once.
+- Stock is held while payment is pending, but the hold must have an expiry,
+  plus a sweep that releases expired holds in case a webhook never arrives.
+- Stage 13 left the transition rules unwritten on purpose. Stage 14 writes
+  the ones the webhook performs: `pending → paid`, `pending → cancelled`.
 
 ## Running it
 
@@ -199,6 +262,7 @@ Run the tests with:
 ```powershell
 python tests/test_checkout_race.py
 python tests/test_order_snapshot.py
+python tests/test_api.py
 ```
 
 ## Layout
@@ -211,7 +275,7 @@ art-gallery/
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
 │                  #   checkout, order, orders, 404, macros
-├── static/           # css/style.css, js/{lightbox,filter}.js, images/
+├── static/           # css/style.css, js/{lightbox,filter,cart}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
 │                  #   support.py holds the throwaway-database helpers
@@ -255,10 +319,15 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       remembered orders per browser (`/orders`), and the snapshot proved by
       test rather than asserted. Transition RULES deliberately deferred to the
       stages that can perform transitions (14 webhook, 16 admin).
-- [ ] **14 — Real payments.** Stripe test mode, checkout sessions, webhooks,
-      payment confirmation and failure, order status.
-- [ ] **15 — API / JSON.** `/api/...` endpoints, GET/POST, `fetch()`, why APIs
-      are useful.
+- [ ] **14 — Real payments. DEFERRED — come back to this.** Stripe test
+      mode, checkout sessions, webhooks, payment confirmation and failure,
+      order status. Skipped on 2026-09-24 and moved on to Stage 15; the mock
+      checkout from Stage 12 is still what runs. See "Deferred: Stage 14"
+      below for the to-do list.
+- [x] **15 — API / JSON.** `/api/...` endpoints, GET/POST, `fetch()`, why APIs
+      are useful. `GET /api/artworks` (same filters as All works),
+      `GET /api/artworks/<id>`, `POST /api/cart`; Add to cart uses it via
+      `static/js/cart.js`, falling back to the plain form.
 - [ ] **16 — Admin / CMS.** Add/edit/delete artwork, pricing, availability,
       featured flag. Simple auth.
 - [ ] **17 — Image management.** Static file organisation, naming conventions,

@@ -537,6 +537,14 @@ a.feature__media:hover img { transform: scale(1.03); }
 
 .purchase__note { margin-top: var(--space-2); }
 
+/* The result of an Add to cart sent by cart.js. :empty collapses it entirely
+   until there is something to say, so it takes up no room on a page where
+   nothing has happened yet. */
+.purchase__status { margin-top: var(--space-2); }
+.purchase__status:empty { display: none; }
+.purchase__status a { color: inherit; }
+.purchase__status--error { color: var(--accent); }
+
 /* --- 15. Filters ------------------------------------------------------------ */
 
 .filters {

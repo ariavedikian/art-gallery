@@ -71,8 +71,17 @@
                 The artwork id travels in a hidden field rather than in the
                 URL, because the URL of a POST is the action, not the subject.
               #}
+              {#
+                Two addresses on one form, on purpose. action= is where the
+                browser posts it by itself: the HTML route, which works with
+                JavaScript off. data-api= is where static/js/cart.js sends it
+                instead when JavaScript is on, getting JSON back rather than a
+                new page. Same rules either way -- both routes call
+                add_to_cart() in app.py.
+              #}
               <form class="purchase__form" method="post"
-                    action="{{ url_for('cart_add') }}">
+                    action="{{ url_for('cart_add') }}"
+                    data-api="{{ url_for('api_cart_add') }}">
                 <input type="hidden" name="artwork_id" value="{{ artwork.id }}">
 
                 {% if artwork.inventory_quantity > 1 %}
@@ -89,6 +98,13 @@
 
               {# Said plainly, because it is true: the cart is a wish list.
                  Nothing is held until a purchase actually goes through. #}
+              {# Where cart.js reports the result. Empty, and so invisible,
+                 until then. role="status" makes a screen reader announce the
+                 message when it appears, since nothing else on the page moves
+                 to signal that anything happened. #}
+              <p class="purchase__status small" id="purchase-status"
+                 role="status" aria-live="polite"></p>
+
               <p class="purchase__note muted small">Adding a work to your cart
                 does not reserve it. Availability is confirmed at checkout.</p>
             {% endif %}

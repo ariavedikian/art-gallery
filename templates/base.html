@@ -28,6 +28,7 @@
        exist, and every getElementById would come back null. -->
   <script src="{{ url_for('static', filename='js/lightbox.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/filter.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/cart.js') }}" defer></script>
 </head>
 <body>
 
@@ -71,14 +72,20 @@
 
           {# cart_count comes from the context processor, like the nav artists,
              so the number is right on every page without any route passing it.
-             The count is hidden when it is zero: an empty badge is noise. #}
+
+             The badge is ALWAYS in the page, hidden when the count is zero,
+             rather than left out. static/js/cart.js updates it after adding a
+             work without a reload -- and it cannot update an element that
+             was never rendered, which is exactly what the first item added
+             to an empty cart would hit. id= gives the script a direct handle. #}
           {% set cart_url = url_for('cart') %}
           <li><a href="{{ cart_url }}"
-                 {%- if request.path == cart_url %} aria-current="page"{% endif %}>Cart{% if cart_count %}
-              <span class="nav__count">{{ cart_count }}</span>
-              <span class="visually-hidden">
-                ({{ cart_count }} {{ "item" if cart_count == 1 else "items" }})</span>
-            {% endif %}</a></li>
+                 {%- if request.path == cart_url %} aria-current="page"{% endif %}>Cart
+              <span class="nav__count" id="cart-count"
+                    {%- if not cart_count %} hidden{% endif %}>{{ cart_count }}</span>
+              <span class="visually-hidden" id="cart-count-label">
+                {%- if cart_count %} ({{ cart_count }} {{ "item" if cart_count == 1 else "items" }}){% endif -%}
+              </span></a></li>
         </ul>
       </nav>
     </div>
