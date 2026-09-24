@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{#
+  The orders this browser remembers.
+
+  There are no accounts, so this list comes from the session: it holds the
+  references, and the database holds everything true about them. Exactly the
+  cart's arrangement, one level up.
+
+  The page says plainly that the list belongs to this browser rather than to a
+  person, because that is what it is.
+#}
+
+{% block title %}Your orders — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ url_for('home') }}">Gallery</a></li>
+        <li aria-current="page">Your orders</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Acquisition</p>
+      <h1 class="display">Your orders</h1>
+
+      {% if not orders %}
+
+        {#
+          Two different empty states, because they mean different things. A
+          browser that never ordered anything is not the same as one whose
+          orders have vanished from the database, and telling someone they
+          have never ordered when they just did is simply wrong.
+        #}
+        {% if missing %}
+          <p class="lead">This browser remembers
+            {{ missing }} {{ "order" if missing == 1 else "orders" }}, but
+            {{ "it is" if missing == 1 else "they are" }} no longer in the
+            database. That is expected if the database has been rebuilt since
+            {{ "it was" if missing == 1 else "they were" }} placed.</p>
+        {% else %}
+          <p class="lead">This browser has not placed an order yet.</p>
+        {% endif %}
+
+        <p><a class="button" href="{{ url_for('gallery') }}">Browse the collection</a></p>
+
+      {% else %}
+
+        <p class="lead">Orders placed from this browser. Keep each reference:
+          it is the only way back to an order from anywhere else.</p>
+
+        <ul class="order-list">
+          {% for order in orders %}
+            <li class="order-list__item">
+              <div class="order-list__main">
+                <p class="order-list__reference">
+                  <a href="{{ url_for('order_page', reference=order.reference) }}">
+                    <code class="order__reference">{{ order.reference }}</code>
+                  </a>
+                </p>
+                <p class="muted small">{{ order.placed_at | placed }}</p>
+              </div>
+
+              <div class="order-list__meta">
+                {# work_count is SUM(quantity), so an order of three prints of
+                   one work reads as three works rather than one line. #}
+                <p class="muted small">
+                  {{ order.work_count }} {{ "work" if order.work_count == 1 else "works" }}
+                </p>
+                <p class="tag">{{ order.status | order_status }}</p>
+              </div>
+
+              <p class="order-list__total price__amount">{{ order.subtotal_cents | usd }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+
+      {% endif %}
+
+      {#
+        The PARTIAL case: some remembered orders resolved and some did not.
+        Without this, the list would silently be shorter than it should be.
+        The all-missing case is handled by the empty state above, so this only
+        runs when there is a list to be short.
+      #}
+      {% if orders and missing %}
+        <p class="muted small order-list__note">
+          {{ missing }} remembered {{ "order is" if missing == 1 else "orders are" }}
+          no longer in the database. That is expected if the database has been
+          rebuilt since {{ "it was" if missing == 1 else "they were" }} placed.
+        </p>
+      {% endif %}
+
+    </div>
+  </section>
+
+{% endblock %}

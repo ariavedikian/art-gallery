@@ -461,6 +461,91 @@ def allowed_quantity(artwork):
     return min(artwork["inventory_quantity"], MAX_PER_LINE)
 
 
+# --- Remembered orders -------------------------------------------------------
+# There are no accounts yet, so "your orders" can only mean the orders THIS
+# BROWSER remembers. The session holds a list of references; the database holds
+# everything true about them. Exactly the cart's shape: the cookie carries
+# identifiers, never facts.
+#
+# The honest limitation is that a different device shows nothing, and clearing
+# cookies loses the list. That is precisely what real accounts fix, at Stage 16.
+
+ORDERS_KEY = "orders"
+
+# A cookie is capped at about 4KB in total, shared with the cart, and every
+# reference is 22 characters. Ten is generous and leaves plenty of room.
+REMEMBERED_ORDERS = 10
+
+# The statuses an order may have, and how each reads on a page. The database
+# enforces the same list with a CHECK constraint (see schema.sql), so this
+# dictionary and that constraint have to agree -- and the test suite checks
+# that they do.
+ORDER_STATUSES = {
+    "pending": "Awaiting payment",
+    "paid": "Paid",
+    "shipped": "Shipped",
+    "cancelled": "Cancelled",
+}
+
+
+def get_remembered_orders():
+    """The references this browser has kept, newest first.
+
+    Defensive about the contents for the same reason get_cart() is: this came
+    out of a cookie, and a cookie can be old, hand-edited, or left over from a
+    different version of the app. Anything unrecognisable is treated as no
+    orders rather than allowed to raise on every page.
+    """
+    stored = session.get(ORDERS_KEY, [])
+    if not isinstance(stored, list):
+        return []
+    return [ref for ref in stored if isinstance(ref, str)][:REMEMBERED_ORDERS]
+
+
+def remember_order(reference):
+    """Add an order to the front of this browser's list.
+
+    Assigned back to the session rather than mutated in place, for the same
+    reason the cart is: Flask re-sends the cookie only when it notices a
+    change, and it cannot notice a list it handed you being appended to.
+    """
+    others = [ref for ref in get_remembered_orders() if ref != reference]
+    session[ORDERS_KEY] = [reference] + others[:REMEMBERED_ORDERS - 1]
+
+
+def get_orders_by_references(references):
+    """Summaries of these orders, newest first.
+
+    Two new pieces of SQL here:
+
+    GROUP BY collapses many rows into one per group, and COUNT/SUM report on
+    the rows that were collapsed. Without it, an order of three works would
+    come back as three rows and the page would have to add them up in Python.
+
+    LEFT JOIN keeps every row from the left-hand table even when the right has
+    no match. A plain JOIN would silently drop an order that somehow had no
+    lines -- and an order that exists but looks empty is exactly the kind of
+    problem you want to SEE rather than have hidden by the query.
+
+    COALESCE turns the NULL that SUM returns for no rows into 0, so the
+    template never has to think about it.
+    """
+    if not references:
+        return []
+
+    placeholders = ", ".join("?" * len(references))
+    return query_db(f"""
+        SELECT o.id, o.reference, o.subtotal_cents, o.status, o.placed_at,
+               COUNT(oi.id) AS line_count,
+               COALESCE(SUM(oi.quantity), 0) AS work_count
+          FROM orders o
+          LEFT JOIN order_items oi ON oi.order_id = o.id
+         WHERE o.reference IN ({placeholders})
+         GROUP BY o.id
+         ORDER BY o.placed_at DESC, o.id DESC
+    """, references)
+
+
 # --- Checkout ----------------------------------------------------------------
 
 class OutOfStock(Exception):
@@ -667,6 +752,20 @@ def placed(iso_text):
     moment = datetime.fromisoformat(iso_text)
     return moment.strftime("%d %B %Y, %H:%M UTC").lstrip("0")
 
+@app.template_filter("order_status")
+def order_status(value):
+    """Turn "paid" into "Paid", and "pending" into "Awaiting payment".
+
+    The database stores the short machine value, because that is what a CHECK
+    constraint and a query want. How it reads to a person is presentation, so
+    it belongs in a filter -- the same division as usd and placed.
+
+    An unknown value is shown as-is rather than hidden. If a status ever
+    reaches the page that this dictionary does not know about, seeing it is
+    more useful than a blank space.
+    """
+    return ORDER_STATUSES.get(value, value)
+
 @app.context_processor
 def inject_site_globals():
     """Variables every template needs, whichever route rendered it.
@@ -687,6 +786,10 @@ def inject_site_globals():
         # quantity inputs use it for their max= so the browser enforces the
         # same limit the server does.
         "max_per_line": MAX_PER_LINE,
+
+        # The Orders link is hidden until this browser has placed one. An
+        # empty page nobody can fill is worse than no link.
+        "remembered_orders": len(get_remembered_orders()),
     }
 
 
@@ -955,7 +1058,28 @@ def checkout_submit():
     # The order exists, so the cart has done its job.
     session.pop(CART_KEY, None)
 
+    # ...and this browser keeps the reference, so /orders can find it again
+    # after the confirmation page is closed.
+    remember_order(reference)
+
     return redirect(url_for("order_page", reference=reference))
+
+
+@app.get("/orders")
+def orders():
+    """The orders this browser remembers.
+
+    `missing` is the difference between what the session claims and what the
+    database actually has. It is not a hypothetical: rebuilding the database
+    with init_db.py --reset leaves the cookie pointing at orders that no
+    longer exist, and saying so is much better than showing a short list with
+    no explanation.
+    """
+    references = get_remembered_orders()
+    found = get_orders_by_references(references)
+
+    return render_template("orders.html", orders=found,
+                           missing=len(references) - len(found))
 
 
 @app.get("/order/<reference>")
@@ -982,7 +1106,7 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 12}
+    return {"status": "ok", "stage": 13}
 
 
 # --- Error handlers ----------------------------------------------------------

@@ -60,6 +60,15 @@
 
           <li><a href="{{ url_for('about') }}">About</a></li>
 
+          {# Hidden until this browser has placed an order: a link to a page
+             that can only ever be empty is worse than no link. Like
+             cart_count, the number comes from the context processor. #}
+          {% if remembered_orders %}
+            {% set orders_url = url_for('orders') %}
+            <li><a href="{{ orders_url }}"
+                   {%- if request.path == orders_url %} aria-current="page"{% endif %}>Orders</a></li>
+          {% endif %}
+
           {# cart_count comes from the context processor, like the nav artists,
              so the number is right on every page without any route passing it.
              The count is hidden when it is zero: an empty badge is noise. #}

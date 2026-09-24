@@ -834,6 +834,50 @@ a.feature__media:hover img { transform: scale(1.03); }
 .order__items > * + * { margin-top: var(--space-2); }
 
 
+/* --- the orders list --- */
+
+.order-list {
+  list-style: none;
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* Reference and date, then counts and status, then the total pushed right --
+   the same left-to-right reading order the cart lines use. */
+.order-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.order-list__main > * + * { margin-top: 0.2rem; }
+.order-list__reference a { color: inherit; text-decoration: none; }
+.order-list__reference a:hover { text-decoration: underline; }
+
+.order-list__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.order-list__total {
+  font-size: 1.125rem;
+  text-align: right;
+}
+
+.order-list__note { margin-top: var(--space-3); }
+
+.order__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+
 /* --- 19. Lightbox ---------------------------------------------------------- */
 
 /* A <dialog> is hidden until showModal() opens it, then sits in the browser
@@ -989,6 +1033,16 @@ a.feature__media:hover img { transform: scale(1.03); }
   }
 
   .cart-summary { max-width: none; }
+
+  /* The total drops under the rest rather than squeezing three columns into
+     a phone width. */
+  .order-list__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .order-list__total { grid-column: 2; }
+
 
   .lightbox__inner {
     grid-template-columns: 1fr;

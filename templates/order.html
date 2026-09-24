@@ -18,8 +18,9 @@
       <p class="eyebrow">Confirmed</p>
       <h1 class="display">Thank you</h1>
 
-      <p class="lead">Your order has been recorded. A reference is below —
-        keep it, as it is the only way back to this page.</p>
+      <p class="lead">Your order has been recorded. The reference below is the
+        only way back to this page — though this browser will also remember it,
+        under <a href="{{ url_for('orders') }}">your orders</a>.</p>
 
       <p class="mock-payment__banner">Mock order. No payment was taken and
         nothing will be shipped. Real payments arrive at Stage 14.</p>
@@ -34,7 +35,8 @@
             <dd><code class="order__reference">{{ order.reference }}</code></dd>
           </div>
           <div><dt>Placed</dt><dd>{{ order.placed_at | placed }}</dd></div>
-          <div><dt>Status</dt><dd>{{ order.status }}</dd></div>
+          {# The database stores "paid"; the filter decides how that reads. #}
+          <div><dt>Status</dt><dd>{{ order.status | order_status }}</dd></div>
           <div><dt>Payment</dt><dd>{{ order.payment_method }}</dd></div>
           <div><dt>Name</dt><dd>{{ order.customer_name }}</dd></div>
           <div><dt>Email</dt><dd>{{ order.customer_email }}</dd></div>
@@ -74,7 +76,10 @@
             <span class="price__amount">{{ order.subtotal_cents | usd }}</span>
           </p>
 
-          <p><a class="button" href="{{ url_for('gallery') }}">Back to the collection</a></p>
+          <p class="order__actions">
+            <a class="button" href="{{ url_for('gallery') }}">Back to the collection</a>
+            <a class="button button--quiet" href="{{ url_for('orders') }}">Your orders</a>
+          </p>
         </div>
 
       </div>

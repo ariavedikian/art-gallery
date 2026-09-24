@@ -151,9 +151,21 @@ CREATE TABLE orders (
     -- a real payment and a fake one can never be confused in the data.
     payment_method TEXT NOT NULL,
 
-    -- The order lifecycle proper arrives at Stage 13/14. For now a mock
-    -- payment that succeeded produces 'paid', and nothing else is written.
-    status     TEXT NOT NULL DEFAULT 'paid',
+    -- The statuses an order may have. The CHECK means the database refuses
+    -- anything outside this list, so a typo is an error at the moment of
+    -- writing rather than a value nobody's code handles.
+    --
+    --   pending    created, payment not yet confirmed (Stage 14 uses this,
+    --              because a Stripe payment is confirmed asynchronously)
+    --   paid       what the mock payment produces today
+    --   shipped    dispatched
+    --   cancelled  did not complete, or was withdrawn
+    --
+    -- Which TRANSITIONS are legal is not written anywhere yet, deliberately:
+    -- nothing in the app can change a status. Those rules arrive with the
+    -- things that can -- the webhook at Stage 14, the admin at Stage 16.
+    status     TEXT NOT NULL DEFAULT 'paid'
+               CHECK (status IN ('pending', 'paid', 'shipped', 'cancelled')),
 
     -- SQLite has no DATE type, so an ISO 8601 string in UTC. It sorts
     -- correctly as text, which is exactly why that format was chosen.
@@ -197,3 +209,7 @@ CREATE TABLE order_items (
 -- then fetches its lines by order_id. Both earn an index. (reference already
 -- has one: UNIQUE creates an index to enforce itself.)
 CREATE INDEX idx_order_items_order_id ON order_items (order_id);
+
+-- The orders list is read newest first. ISO 8601 text sorts chronologically,
+-- which is exactly why that format was chosen for placed_at.
+CREATE INDEX idx_orders_placed_at ON orders (placed_at DESC);

@@ -149,8 +149,19 @@ styling, cluttered layouts.
 - **Mock payment is labelled unmistakably**, in the form and on the receipt,
   and is selectable approve/decline so the failure path can be tested.
 - **Tests build their own throwaway database** from `schema.sql` and
-  `seed.sql` in a temp folder and point `app.DATABASE_PATH` at it. A test that
-  can destroy the database you are working on is worse than no test.
+  `seed.sql` in a temp folder and point `app.DATABASE_PATH` at it, via
+  `tests/support.py`. A test that can destroy the database you are working on
+  is worse than no test.
+- **Tests inspect the database on their own connection**, not through the code
+  under test. A test that checks its subject through its subject can agree
+  with a bug instead of catching it.
+- **Orders this browser remembers** live in the session as a list of
+  references; the database holds everything true about them. Same arrangement
+  as the cart, one level up. Without accounts, "your orders" can only mean
+  "this browser's orders" — which is what Stage 16 fixes.
+- **The status vocabulary is stated twice** — `ORDER_STATUSES` in app.py and a
+  `CHECK` constraint in schema.sql — because SQLite cannot read a Python dict.
+  `tests/test_order_snapshot.py` fails the moment the two disagree.
 - **Tests are plain scripts** run with `python tests/<name>.py`, stdlib only,
   exiting non-zero on failure. No pytest until there are enough tests to earn
   the dependency.
@@ -187,6 +198,7 @@ Run the tests with:
 
 ```powershell
 python tests/test_checkout_race.py
+python tests/test_order_snapshot.py
 ```
 
 ## Layout
@@ -198,10 +210,11 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
-│                  #   checkout, order, 404, macros
+│                  #   checkout, order, orders, 404, macros
 ├── static/           # css/style.css, js/{lightbox,filter}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
-├── tests/            # plain runnable scripts, stdlib only (no pytest yet)
+├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
+│                  #   support.py holds the throwaway-database helpers
 └── database/         # schema.sql (artists, artworks, orders, order_items),
                   #   seed.sql, art_gallery.db (generated)
 ```
@@ -238,9 +251,10 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       creation, database transactions. Clearly-labelled MOCK payment flow.
       Created `orders` and `order_items` (with the price snapshot), since an
       order cannot be written without them.
-- [~] **13 — Order system.** Tables and the price snapshot landed at Stage 12.
-      Remaining: the order status lifecycle, looking an order up, order
-      history, and why the snapshot matters shown rather than asserted.
+- [x] **13 — Order system.** Status vocabulary with a CHECK constraint,
+      remembered orders per browser (`/orders`), and the snapshot proved by
+      test rather than asserted. Transition RULES deliberately deferred to the
+      stages that can perform transitions (14 webhook, 16 admin).
 - [ ] **14 — Real payments.** Stripe test mode, checkout sessions, webhooks,
       payment confirmation and failure, order status.
 - [ ] **15 — API / JSON.** `/api/...` endpoints, GET/POST, `fetch()`, why APIs
