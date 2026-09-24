@@ -31,6 +31,7 @@ import os
 import re
 import secrets
 import sqlite3
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -1030,6 +1031,16 @@ RENDITION_WIDTHS = (480, 960, 1600, 2400)
 # the difference from the original stops being visible at display size.
 RENDITION_QUALITY = 82
 
+# What a file this site wrote looks like: 32 hex characters, an optional
+# rendition width, one of our extensions. The sweep only ever deletes files
+# that match, so a file someone put in the folder by hand is left alone.
+_UPLOAD_NAME = re.compile(r"([0-9a-f]{32})(-\d+)?\.(jpg|png|webp)")
+
+# The sweep leaves files younger than this. A save writes its file first and
+# its row a moment later; a file caught in that moment has no row YET, and
+# deleting it would leave the row about to be saved pointing at nothing.
+SWEEP_MIN_AGE_SECONDS = 60 * 60
+
 # The largest side an image may claim, in pixels. A sanity bound, not a
 # design limit: anything bigger is a mistake or a hostile file.
 MAX_IMAGE_SIDE = 20000
@@ -1322,6 +1333,46 @@ def discard_upload(paths):
         path.unlink(missing_ok=True)
 
 
+def image_files(stored):
+    """Every file on disk that belongs to an uploaded image.
+
+    The original, plus every "<name>-<width>.webp" beside it -- found by
+    looking, not worked out from RENDITION_WIDTHS. If the widths change one
+    day, renditions made at the old widths still belong to this image and
+    still have to go when it does.
+    """
+    original = image_file(stored)
+    return [original] + sorted(UPLOAD_DIR.glob(f"{original.stem}-*.webp"))
+
+
+def remove_image_files(stored):
+    """Delete an uploaded image's files, if no artwork uses it any more.
+
+    Called only AFTER the database change that stopped using it has been
+    saved: the mirror of creating, which writes the file before the row.
+    Either way round, the worst a crash in between can leave is a stray
+    file, never a row pointing at a missing one.
+
+    The database decides whether the image is unused, not the caller: if any
+    row still names it, nothing is deleted. Placeholders are never deleted.
+
+    A file that will not delete (on Windows, one that is open elsewhere) is
+    logged and left for `flask sweep-uploads`. The save it follows has
+    already happened, and must not be reported as failed because tidying up
+    afterwards did not work.
+    """
+    if not is_upload(stored):
+        return
+    if query_db("SELECT 1 FROM artworks WHERE image = ?", (stored,), one=True):
+        return
+    for path in image_files(stored):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            app.logger.warning("Could not delete %s (%s); "
+                               "flask sweep-uploads will retry.", path, error)
+
+
 def parse_price(text):
     """"$4,800.50" -> 480050 cents, or None if it is not a price.
 
@@ -1460,7 +1511,13 @@ def validate_artwork(form, files, current_image=None):
         # a key in image_choices() ever reaches the filesystem. Any
         # image_width or image_height in the POST is simply never read.
         images = image_choices(current_image)
-        if values["image"] not in images:
+        if values["image"] not in images and is_upload(values["image"]):
+            # An upload the form showed as this work's image, which is not
+            # this work's image now: someone replaced it after the form
+            # was opened, and its files may already be gone.
+            errors["image"] = ("This work's image was changed while the form was "
+                               "open. Check the image, then save again.")
+        elif values["image"] not in images:
             errors["image"] = "Choose an image, or upload one."
         elif images[values["image"]] is None:
             errors["image"] = "This file's size cannot be read. Choose another image."
@@ -1515,8 +1572,9 @@ def insert_artwork(record):
     return cursor.lastrowid
 
 
-def update_artwork(artwork_id, record, loaded_inventory):
-    """Save an edited artwork -- unless its stock changed since the form loaded.
+def update_artwork(artwork_id, record, loaded_inventory, loaded_image):
+    """Save an edited artwork -- unless its stock changed since the form loaded,
+    or its image changed since this request read it.
 
     loaded_inventory is the stock the form showed when it was opened, carried
     through a hidden field. The UPDATE only matches if the stock is STILL that
@@ -1526,12 +1584,19 @@ def update_artwork(artwork_id, record, loaded_inventory):
     That is optimistic concurrency: assume nobody else will interfere, but
     check at the moment of writing. Only the stock is guarded, because it is
     the only column that anything other than the admin ever changes.
+
+    The image is guarded for a different reason (Stage 17): replacing an
+    image now DELETES the old one's files. If another save replaced it
+    between this request reading the row and this UPDATE, writing the old
+    name back would point the work at files that are already gone. So the
+    UPDATE also requires the image to still be the one this request read.
     """
     assignments = ", ".join(f"{column} = ?" for column in _ARTWORK_WRITE_COLUMNS)
     cursor = get_db().execute(
-        f"UPDATE artworks SET {assignments} WHERE id = ? AND inventory_quantity = ?",
+        f"UPDATE artworks SET {assignments} "
+        f"WHERE id = ? AND inventory_quantity = ? AND image = ?",
         [record[column] for column in _ARTWORK_WRITE_COLUMNS]
-        + [artwork_id, loaded_inventory])
+        + [artwork_id, loaded_inventory, loaded_image])
     return cursor.rowcount == 1
 
 
@@ -2232,27 +2297,37 @@ def admin_artwork_update(artwork_id):
     written = write_upload(record)
     saved = False
     try:
-        saved = update_artwork(artwork_id, record, loaded)
+        saved = update_artwork(artwork_id, record, loaded, artwork["image"])
     finally:
         if not saved:
             discard_upload(written)
 
     if not saved:
-        # The stock moved while the form was open -- almost certainly a sale.
-        # Re-read what it is NOW, show it, and let the admin decide. The form
-        # keeps everything else they typed; only the stock needs a second look.
+        # Something moved under the form: the stock (almost certainly a sale)
+        # or the image (another save). Re-read what they are NOW, show them,
+        # and let the admin decide. Everything else they typed is kept.
         current = get_artwork_for_edit(artwork_id)
         if current is None:
             abort(404)
         now = current["inventory_quantity"]
-        values["inventory_quantity"] = str(now)
-        errors = {"inventory_quantity":
-                  f"Stock changed from {loaded} to {now} while you were editing "
-                  f"(probably a sale). Check this number, then save again."}
+        errors = {}
+        if now != loaded:
+            values["inventory_quantity"] = str(now)
+            errors["inventory_quantity"] = (
+                f"Stock changed from {loaded} to {now} while you were editing "
+                f"(probably a sale). Check this number, then save again.")
+        if current["image"] != artwork["image"]:
+            values["image"] = current["image"]
+            errors["image"] = ("This work's image was changed by someone else "
+                               "just now. Check the image, then save again.")
         if written:
             errors["image_file"] = "Nothing was saved, so choose the file again."
         # 409 Conflict: the request was fine; the work's state moved under it.
         return _artwork_form(values, errors, current, now, status=409)
+
+    # Saved. If that replaced an upload, its files are now unused.
+    if record["image"] != artwork["image"]:
+        remove_image_files(artwork["image"])
 
     flash(f"Saved \u201c{record['title']}\u201d.", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2285,13 +2360,22 @@ def admin_artwork_delete(artwork_id):
     if artwork is None:
         abort(404)
 
+    # RETURNING hands back the image of the row actually deleted, in the same
+    # statement -- not the one read a moment ago, which another save could
+    # have replaced since. fetchall() also runs the statement to completion.
     try:
-        get_db().execute("DELETE FROM artworks WHERE id = ?", (artwork_id,))
+        deleted = get_db().execute(
+            "DELETE FROM artworks WHERE id = ? RETURNING image",
+            (artwork_id,)).fetchall()
     except sqlite3.IntegrityError:
         flash(f"\u201c{artwork['title']}\u201d has been sold, so it cannot be "
               "deleted: its orders still point at it. To take it off sale, "
               "untick \u201cOffered for sale\u201d instead.", "error")
         return redirect(url_for("admin_artwork_edit", artwork_id=artwork_id))
+
+    # The row is gone; now its files. Row first, then files.
+    for row in deleted:
+        remove_image_files(row["image"])
 
     flash(f"Deleted \u201c{artwork['title']}\u201d (#{artwork_id}).", "notice")
     return redirect(url_for("admin_dashboard"))
@@ -2418,6 +2502,63 @@ def rebuild_renditions_command():
             made += 1
         click.echo(f"#{row['id']}: made {', '.join(f'{w}px' for w in missing)}")
     click.echo(f"{made} rendition(s) made for {len(rows)} uploaded image(s).")
+
+
+@app.cli.command("sweep-uploads")
+@click.option("--delete", is_flag=True,
+              help="Delete the stray files. Without this, only list them.")
+def sweep_uploads_command(delete):
+    """List uploaded files that no artwork uses; with --delete, remove them.
+
+        flask --app app sweep-uploads            (look)
+        flask --app app sweep-uploads --delete   (and remove)
+
+    Strays should be rare: a crash between writing a file and saving its
+    row, or a file that would not delete when its work changed. Listing is
+    the default because deleting cannot be undone -- look first.
+
+    Three kinds of file are never touched: any file whose name this site
+    would not have generated, anything younger than SWEEP_MIN_AGE_SECONDS
+    (it may belong to a save still in progress), and of course any file a
+    row still uses.
+    """
+    if not UPLOAD_DIR.is_dir():
+        click.echo("No upload folder yet; nothing to sweep.")
+        return
+
+    used = {Path(row["image"]).stem for row in get_db().execute(
+        "SELECT image FROM artworks WHERE image LIKE 'artworks/%'")}
+    cutoff = time.time() - SWEEP_MIN_AGE_SECONDS
+    strays, young, foreign = [], [], []
+    for path in sorted(UPLOAD_DIR.iterdir()):
+        match = _UPLOAD_NAME.fullmatch(path.name)
+        if not match or not path.is_file():
+            foreign.append(path)
+        elif match[1] in used:
+            continue
+        elif path.stat().st_mtime > cutoff:
+            young.append(path)
+        else:
+            strays.append(path)
+
+    for path in foreign:
+        click.echo(f"left alone (not a name this site writes): {path.name}")
+    for path in young:
+        click.echo(f"left alone (too recent to be sure): {path.name}")
+    for path in strays:
+        if delete:
+            try:
+                path.unlink()
+                click.echo(f"deleted: {path.name}")
+            except OSError as error:
+                click.echo(f"could not delete {path.name}: {error}", err=True)
+        else:
+            click.echo(f"stray: {path.name}")
+
+    if strays and not delete:
+        click.echo(f"{len(strays)} stray file(s). Run again with --delete to remove them.")
+    elif not strays:
+        click.echo("No stray files.")
 
 
 # --- Error handlers ----------------------------------------------------------

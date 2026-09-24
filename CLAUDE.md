@@ -223,7 +223,10 @@ styling, cluttered layouts.
   the stock it loaded; `update_artwork()` saves only
   `WHERE id = ? AND inventory_quantity = ?`, and a mismatch is a 409 with the
   form intact. Stock is guarded because it is the only column something other
-  than the admin writes.
+  than the admin writes. Since Stage 17 the UPDATE also requires
+  `image = ?` (the image this request read), because replacing an image
+  deletes the old files: a save that read the row too early must not write
+  a deleted image's name back.
 - **Status transitions are rules in `ORDER_TRANSITIONS`**, enforced in the
   `WHERE` clause of `change_order_status()`, so a repeat or a disallowed
   change updates zero rows. Stage 14 adds `pending → paid/cancelled`.
@@ -285,6 +288,18 @@ styling, cluttered layouts.
   style.css, change its slot there. Placeholder SVGs get neither attribute.
 - **The lightbox assigns `srcset` before `src`, every time, even when empty**,
   or a placeholder would inherit the previous work's list.
+- **Row first, then files, when an image stops being used** -- the mirror of
+  creating (files, then row). `remove_image_files()` runs only after the
+  UPDATE or DELETE saved; the DELETE uses `RETURNING image` so it removes
+  the image of the row actually deleted. The database decides: nothing is
+  deleted while any row names the image, and placeholders never are. Files
+  are found by globbing `<name>-*.webp`, not from `RENDITION_WIDTHS`, so
+  renditions at old widths go too. A file that will not delete is logged,
+  and the save still succeeds.
+- **`flask --app app sweep-uploads` looks; `--delete` acts.** It removes only
+  files named the way this site names them, that no row uses, and that are
+  older than `SWEEP_MIN_AGE_SECONDS` -- a younger file may belong to a save
+  whose row has not been written yet.
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
@@ -359,6 +374,7 @@ python tests/test_admin.py
 python tests/test_cms.py
 python tests/test_images.py
 python tests/test_uploads.py
+python tests/test_cleanup.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -366,6 +382,14 @@ images uploaded before Stage 17 part 3). Safe to run repeatedly:
 
 ```powershell
 flask --app app rebuild-renditions
+```
+
+List uploaded files no artwork uses (left by a crash, or a file that was
+locked when its work changed), then remove them once you have looked:
+
+```powershell
+flask --app app sweep-uploads
+flask --app app sweep-uploads --delete
 ```
 
 Create (or re-password) an admin. The database starts with none, and
@@ -450,7 +474,7 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       **Part 2:** create/edit/delete artworks with server-side validation,
       optimistic concurrency on stock, delete refused for sold works, and
       `paid → shipped` via `ORDER_TRANSITIONS`.
-- [~] **17 — Image management.** Static file organisation, naming conventions,
+- [x] **17 — Image management.** Static file organisation, naming conventions,
       optimisation, safe upload concepts. Split in four.
       **Part 1 (done):** sizes read from the file (`image_size()`), not typed;
       the form cannot override them; placeholders restricted to SVG.
@@ -461,9 +485,10 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       **Part 3 (done):** WebP renditions at four widths, `srcset`/`sizes`
       through one `artwork_image` macro, the lightbox too, and
       `flask rebuild-renditions`.
-      **Part 4:** deleting the files a replaced or deleted work no longer
-      uses (row first, then files: the mirror of creating), and a sweep for
-      stray files left by crashes.
+      **Part 4 (done):** a replaced or deleted work's files are removed
+      after the row change saves (row first, then files), only when no row
+      uses them; the image joins stock in the UPDATE guard; `DELETE ...
+      RETURNING`; `flask sweep-uploads` for strays, looking before deleting.
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
