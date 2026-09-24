@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{#
+  Shown when a request is larger than MAX_CONTENT_LENGTH -- in practice, an
+  image upload that is too big. Werkzeug refuses the body without reading it,
+  so the form cannot come back with what was typed; this page says so.
+#}
+
+{% block title %}File too large — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container prose">
+      <p class="eyebrow">413</p>
+      <h1 class="display">That file is too large.</h1>
+      <p class="lead">Uploads can be up to {{ max_upload_mb }} MB. Nothing was
+        saved. Go back, choose a smaller file, and save again — anything you
+        typed may need re-entering.</p>
+    </div>
+  </section>
+
+{% endblock %}

@@ -26,6 +26,7 @@ from the terminal with `flask --app app create-admin <name>`.
 """
 
 import functools
+import io
 import os
 import re
 import secrets
@@ -39,6 +40,7 @@ from xml.etree import ElementTree
 import click
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
                    session, url_for)
+from PIL import Image, ImageOps
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -62,6 +64,12 @@ app.secret_key = os.environ.get("ART_GALLERY_SECRET_KEY", "dev-key-not-a-secret"
 # saying it explicitly means we rely on our code, not on their defaults.
 # (The full defence against cross-site requests is Stage 20.)
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# The largest request body Flask will accept, uploads included. Werkzeug checks
+# the declared length BEFORE reading the body, so an oversized upload is
+# refused with a 413 without ever being held in memory.
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 # Built from database/schema.sql + seed.sql by: python init_db.py --reset
 DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
@@ -998,9 +1006,28 @@ PLACEHOLDER_DIR = Path(app.static_folder) / "images" / "placeholders"
 # SVG can carry a <script> that would run as this site.
 PLACEHOLDER_SUFFIXES = {".svg"}
 
+# Uploaded images live here, under names we generate. They are content, not
+# code -- like the database, they are gitignored -- and the database stores
+# their path as "artworks/<name>", relative to static/images/ like any other.
+UPLOAD_DIR = Path(app.static_folder) / "images" / "artworks"
+
+# The formats an upload may be, as Pillow names them, and the extension each
+# is saved with. The extension comes from what the file turned out to BE,
+# never from the name it arrived with.
+UPLOAD_FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+
 # The largest side an image may claim, in pixels. A sanity bound, not a
 # design limit: anything bigger is a mistake or a hostile file.
 MAX_IMAGE_SIDE = 20000
+
+# The most pixels an upload may decode to. A compressed file can be tiny and
+# still expand enormously: a PNG of 30,000 x 30,000 white pixels is a few
+# hundred kilobytes on disk and several gigabytes in memory once decoded (a
+# "decompression bomb"). The pixel count is in the file's header, so it can
+# be checked before decoding. Pillow has its own guard at about 89 million
+# pixels, left at its default: ours fires first, and Pillow's stays behind it
+# as a second line (and logs a warning if anything ever gets that far).
+MAX_IMAGE_PIXELS = 50_000_000
 
 _SVG_TAG = "{http://www.w3.org/2000/svg}svg"
 
@@ -1044,13 +1071,26 @@ def image_size(path):
     The admin used to type these, which meant they could be wrong. The file
     already knows its own size, so ask the file.
 
-    An SVG states its size in the attributes of its root <svg> element:
-    width="900" height="1100", or failing that, a viewBox="0 0 900 1100"
-    whose last two numbers are the drawing's width and height.
-
-    Only ever called on files we chose from a known folder. It opens whatever
-    path it is given, so the path must be checked BEFORE it gets here.
+    Only ever called on files we chose from a known folder, or wrote
+    ourselves. It opens whatever path it is given, so the path must be
+    checked BEFORE it gets here.
     """
+    if Path(path).suffix.lower() == ".svg":
+        return _svg_size(path)
+
+    # A JPEG, PNG or WebP states its size in its first few bytes. Image.open
+    # reads only that header; the pixels are not decoded unless asked for.
+    try:
+        with Image.open(path) as image:
+            return image.size
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+
+def _svg_size(path):
+    """An SVG states its size in the attributes of its root <svg> element:
+    width="900" height="1100", or failing that, a viewBox="0 0 900 1100"
+    whose last two numbers are the drawing's width and height."""
     try:
         root = ElementTree.parse(path).getroot()
     except (OSError, ElementTree.ParseError):
@@ -1073,19 +1113,137 @@ def image_size(path):
     return size
 
 
-def image_choices():
+def image_choices(current=None):
     """The images the form may offer, each with its size: {path: (w, h)}.
 
-    Read from the folder rather than typed into a list, so a new placeholder
-    appears in the menu without touching code. The size is None for a file
-    whose size cannot be read; the form shows that rather than hiding it.
+    The placeholders, read from their folder so a new one appears without
+    touching code -- plus, when editing, the work's CURRENT image, so it can
+    be kept. `current` comes from the database, never from the form: other
+    works' uploads are not on offer, so one form cannot point at another
+    work's file.
 
-    One dict answers both questions the form asks -- "is this a file we
-    offer?" and "how big is it?" -- so the two answers can never disagree.
+    The size is None for a file whose size cannot be read; the form shows
+    that rather than hiding it. One dict answers both questions the form
+    asks -- "is this a file we offer?" and "how big is it?" -- so the two
+    answers can never disagree.
     """
-    return {f"placeholders/{path.name}": image_size(path)
-            for path in sorted(PLACEHOLDER_DIR.iterdir())
-            if path.suffix.lower() in PLACEHOLDER_SUFFIXES}
+    choices = {f"placeholders/{path.name}": image_size(path)
+               for path in sorted(PLACEHOLDER_DIR.iterdir())
+               if path.suffix.lower() in PLACEHOLDER_SUFFIXES}
+    if current and current not in choices:
+        choices[current] = image_size(image_file(current))
+    return choices
+
+
+def image_file(stored):
+    """Where the file for a stored image path lives on disk.
+
+    "artworks/ab12.jpg" is an upload, in UPLOAD_DIR; anything else is under
+    static/images/. The one place that knows this, so the code that writes
+    uploads and the code that reads them can never look in different folders.
+    """
+    folder, _, name = stored.partition("/")
+    if folder == "artworks":
+        return UPLOAD_DIR / name
+    return Path(app.static_folder) / "images" / stored
+
+
+def prepare_upload(file):
+    """Decode an uploaded file and re-encode a clean copy of it.
+
+    Returns (upload, None) on success, where upload is
+    {"data": bytes, "suffix": ".jpg", "size": (w, h)}; or (None, message).
+    Writes nothing to disk: this is validation, and validation has no side
+    effects. write_upload() does the writing, once the whole form is good.
+
+    Nothing the browser says about the file is used. The filename, its
+    extension and its Content-Type are all typed or chosen by the sender.
+    The only way to know what a file IS is to decode it -- and the only safe
+    thing to keep is a copy we encoded ourselves, from the decoded pixels.
+    """
+    try:
+        # formats= limits which decoders Pillow will even try. Pillow reads
+        # dozens of formats, some old and rarely exercised; a file cannot
+        # reach a decoder we did not list.
+        with Image.open(file.stream, formats=list(UPLOAD_FORMATS)) as image:
+            width, height = image.size
+            if max(width, height) > MAX_IMAGE_SIDE or width * height > MAX_IMAGE_PIXELS:
+                return None, (f"This image is {width:,} \u00d7 {height:,} pixels, which "
+                              f"is more than this site accepts. Resize it and try again.")
+
+            # Now decode every pixel. A truncated or corrupt file fails HERE,
+            # not later on a visitor's screen.
+            image.load()
+
+            # Phone cameras save "MPO", a JPEG with a second picture tucked
+            # inside. Pillow opens it through the JPEG decoder but reports
+            # its own name. It is a JPEG; we keep the first picture.
+            kind = "JPEG" if image.format == "MPO" else image.format
+            colour_profile = image.info.get("icc_profile")
+
+            # A camera often saves the picture sideways and adds a note,
+            # "rotate 90 degrees", in the EXIF metadata. We are about to
+            # throw the metadata away, so turn the pixels upright first,
+            # or portrait photographs would land on their side.
+            clean = ImageOps.exif_transpose(image)
+    except Image.DecompressionBombError:
+        return None, "This image has too many pixels for this site. Resize it and try again."
+    except (OSError, SyntaxError, ValueError):
+        return None, ("This file is not a JPEG, PNG or WebP image, or it is damaged. "
+                      "(iPhone HEIC photos need exporting as JPEG first.)")
+
+    # JPEG holds only greyscale or RGB, as browsers expect it; a print-shop
+    # CMYK JPEG is converted. Its colour profile described CMYK, so it goes.
+    if kind == "JPEG" and clean.mode not in ("L", "RGB"):
+        clean, colour_profile = clean.convert("RGB"), None
+    if kind == "WEBP" and clean.mode not in ("RGB", "RGBA"):
+        clean = clean.convert("RGBA")
+
+    # Saved from pixels, with nothing carried over but the colour profile,
+    # which is what makes the colours of a photographed painting render as
+    # photographed. Everything else in the original is left behind: EXIF
+    # (GPS position, camera serial number), text comments, and any bytes
+    # hidden after the image data.
+    options = {"JPEG": {"quality": 95}, "WEBP": {"quality": 95},
+               "PNG": {"optimize": True}}[kind]
+    buffer = io.BytesIO()
+    clean.save(buffer, kind, icc_profile=colour_profile, **options)
+    return {"data": buffer.getvalue(), "suffix": UPLOAD_FORMATS[kind],
+            "size": clean.size}, None
+
+
+def write_upload(record):
+    """If the form uploaded a file, save it and point the record at it.
+
+    Returns the file's path, or None when there was no upload. The caller
+    keeps the path so it can delete the file again if the row is not written.
+
+    The name is generated, never taken from the upload. A visitor's filename
+    can hold "../", spaces, characters Windows refuses, names Windows reserves
+    (CON, NUL), a name another file already has, or something private
+    ("IMG_2031 client's flat.jpg"). Random hex avoids all of it; hex rather
+    than mixed case because Windows treats "aB" and "Ab" as the same file.
+
+    Mode "xb" means create, and refuse if the file already exists. A name is
+    written once and never overwritten, so a path in the database always
+    means the same bytes.
+    """
+    upload = record["upload"]
+    if upload is None:
+        return None
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    name = secrets.token_hex(16) + upload["suffix"]
+    path = UPLOAD_DIR / name
+    with open(path, "xb") as file:
+        file.write(upload["data"])
+    record["image"] = f"artworks/{name}"
+    return path
+
+
+def discard_upload(path):
+    """Delete a file written for a row that was never saved."""
+    if path is not None:
+        path.unlink(missing_ok=True)
 
 
 def parse_price(text):
@@ -1161,12 +1319,16 @@ def artwork_form_values(artwork=None):
     }
 
 
-def validate_artwork(form):
+def validate_artwork(form, files, current_image=None):
     """Check a submitted artwork form. Returns (values, errors, record).
 
     values  what was typed, as strings, so a rejected form comes back intact
     errors  field name -> message; empty when all is well
-    record  the converted values ready for the database, or None on errors
+    record  the converted values ready for the database, or None on errors.
+            When a file was uploaded, record["upload"] holds the prepared
+            copy and record["image"] is None until write_upload() names it.
+
+    current_image is the work's image as the DATABASE has it, when editing.
 
     Same shape as validate_checkout: the server is the only validation that
     counts, and the admin form has novalidate on it for the same reason.
@@ -1205,24 +1367,43 @@ def validate_artwork(form):
     if inventory is None:
         errors["inventory_quantity"] = "A whole number from 0 to 10,000."
 
-    # The size is not asked for: it is read from the file. The allowlist
-    # check comes first, and it has to -- image_size() opens whatever path it
-    # is handed, and "../../app.py" is a path too. Only a name that is a key
-    # in image_choices() ever reaches the filesystem. Any image_width or
-    # image_height in the POST is simply never read.
-    images = image_choices()
-    if values["image"] not in images:
-        errors["image"] = "Choose an image."
-    elif images[values["image"]] is None:
-        errors["image"] = "This file's size cannot be read. Choose another image."
+    # An uploaded file wins over the menu. An empty file input still sends a
+    # part, with filename "", so "was a file chosen?" means "is there a name".
+    upload = None
+    file = files.get("image_file")
+    if file and file.filename:
+        upload, problem = prepare_upload(file)
+        if problem:
+            errors["image_file"] = problem
+        else:
+            width, height = upload["size"]
     else:
-        width, height = images[values["image"]]
+        # The size is not asked for: it is read from the file. The allowlist
+        # check comes first, and it has to -- image_size() opens whatever path
+        # it is handed, and "../../app.py" is a path too. Only a name that is
+        # a key in image_choices() ever reaches the filesystem. Any
+        # image_width or image_height in the POST is simply never read.
+        images = image_choices(current_image)
+        if values["image"] not in images:
+            errors["image"] = "Choose an image, or upload one."
+        elif images[values["image"]] is None:
+            errors["image"] = "This file's size cannot be read. Choose another image."
+        else:
+            width, height = images[values["image"]]
 
     display_order = parse_whole_number(values["display_order"], 0, 100000)
     if display_order is None:
         errors["display_order"] = "A whole number. Lower numbers hang first."
 
     if errors:
+        # A browser will not let a page fill in a file input -- otherwise any
+        # page could quietly upload a file of its choosing from your disk. So
+        # a rejected form comes back with everything EXCEPT the file, and
+        # says so rather than letting it vanish unexplained.
+        if upload is not None:
+            errors["image_file"] = ("Your image was fine, but nothing was saved "
+                                    "because of the problems below. Choose the "
+                                    "file again.")
         return values, errors, None
 
     record = {
@@ -1239,10 +1420,11 @@ def validate_artwork(form):
         "available_for_purchase": int(values["available_for_purchase"]),
         "inventory_quantity": inventory,
         "is_featured": int(values["is_featured"]),
-        "image": values["image"],
+        "image": None if upload else values["image"],
         "image_width": width,
         "image_height": height,
         "display_order": display_order,
+        "upload": upload,
     }
     return values, {}, record
 
@@ -1875,15 +2057,23 @@ def admin_dashboard():
     return render_template("admin/dashboard.html", artworks=search_artworks())
 
 
-def _artwork_form(template_values, errors, artwork_id=None, loaded_inventory=None,
+def _artwork_form(template_values, errors, artwork=None, loaded_inventory=None,
                   status=200):
-    """Render the artwork form, for creating or editing. One template, both jobs."""
+    """Render the artwork form, for creating or editing. One template, both jobs.
+
+    `artwork` is the stored row when editing, so the form can show the
+    current image and offer to keep it.
+    """
+    current_image = artwork["image"] if artwork else None
     return render_template(
         "admin/artwork_form.html",
         values=template_values, errors=errors,
-        artwork_id=artwork_id, loaded_inventory=loaded_inventory,
+        artwork_id=artwork["id"] if artwork else None,
+        artwork=artwork, loaded_inventory=loaded_inventory,
         artists=get_artists(), categories=get_categories(),
-        images=image_choices(),
+        images=image_choices(current_image),
+        accepted_types=", ".join(f"image/{kind.lower()}" for kind in UPLOAD_FORMATS),
+        max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
     ), status
 
 
@@ -1896,11 +2086,24 @@ def admin_artwork_new():
 @app.post("/admin/artworks/new")
 @admin_required
 def admin_artwork_create():
-    values, errors, record = validate_artwork(request.form)
+    values, errors, record = validate_artwork(request.form, request.files)
     if errors:
         return _artwork_form(values, errors, status=400)
 
-    artwork_id = insert_artwork(record)
+    # The file is written first, then the row that points at it. A file and a
+    # database row cannot share a transaction, so if the row is not written
+    # the file is deleted again -- compensation, not rollback, the same idea
+    # as cancelling an order in Stage 14. This order means the worst case is
+    # a stray file nobody sees, never a row pointing at a file that is not
+    # there, which would be a broken image on the public site.
+    written = write_upload(record)
+    artwork_id = None
+    try:
+        artwork_id = insert_artwork(record)
+    finally:
+        if artwork_id is None:
+            discard_upload(written)
+
     flash(f"Added \u201c{record['title']}\u201d (#{artwork_id}).", "success")
     return redirect(url_for("admin_dashboard"))
 
@@ -1911,22 +2114,34 @@ def admin_artwork_edit(artwork_id):
     artwork = get_artwork_for_edit(artwork_id)
     if artwork is None:
         abort(404)
-    return _artwork_form(artwork_form_values(artwork), {}, artwork_id,
+    return _artwork_form(artwork_form_values(artwork), {}, artwork,
                          loaded_inventory=artwork["inventory_quantity"])
 
 
 @app.post("/admin/artworks/<int:artwork_id>/edit")
 @admin_required
 def admin_artwork_update(artwork_id):
-    if get_artwork_for_edit(artwork_id) is None:
+    artwork = get_artwork_for_edit(artwork_id)
+    if artwork is None:
         abort(404)
 
     loaded = parse_whole_number(request.form.get("loaded_inventory", ""), 0, 10**9)
-    values, errors, record = validate_artwork(request.form)
+    values, errors, record = validate_artwork(request.form, request.files,
+                                              current_image=artwork["image"])
     if errors or loaded is None:
-        return _artwork_form(values, errors, artwork_id, loaded, status=400)
+        return _artwork_form(values, errors, artwork, loaded, status=400)
 
-    if not update_artwork(artwork_id, record, loaded):
+    # Same order as creating: file first, and the file survives only if the
+    # UPDATE saved. A refused UPDATE (the 409 below) counts as not saved.
+    written = write_upload(record)
+    saved = False
+    try:
+        saved = update_artwork(artwork_id, record, loaded)
+    finally:
+        if not saved:
+            discard_upload(written)
+
+    if not saved:
         # The stock moved while the form was open -- almost certainly a sale.
         # Re-read what it is NOW, show it, and let the admin decide. The form
         # keeps everything else they typed; only the stock needs a second look.
@@ -1938,8 +2153,10 @@ def admin_artwork_update(artwork_id):
         errors = {"inventory_quantity":
                   f"Stock changed from {loaded} to {now} while you were editing "
                   f"(probably a sale). Check this number, then save again."}
+        if written is not None:
+            errors["image_file"] = "Nothing was saved, so choose the file again."
         # 409 Conflict: the request was fine; the work's state moved under it.
-        return _artwork_form(values, errors, artwork_id, now, status=409)
+        return _artwork_form(values, errors, current, now, status=409)
 
     flash(f"Saved \u201c{record['title']}\u201d.", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2099,6 +2316,19 @@ def method_not_allowed(error):
         body, status = api_error(405, "That method is not allowed here.")
         return body, status, {"Allow": ", ".join(sorted(error.valid_methods))}
     return error
+
+
+@app.errorhandler(413)
+def request_too_large(error):
+    """A request body over MAX_CONTENT_LENGTH -- in practice, a huge upload.
+
+    The form cannot be shown again with what was typed: Werkzeug refused the
+    body without reading it, so there is nothing to put back.
+    """
+    if request.path.startswith("/api/"):
+        return api_error(413, "The request is too large.")
+    return render_template("413.html",
+                           max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 413
 
 
 if __name__ == "__main__":

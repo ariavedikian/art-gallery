@@ -55,6 +55,16 @@ def temp_database():
 
 
 @contextmanager
+def temp_folder():
+    """A throwaway folder, deleted afterwards whatever happens."""
+    folder = Path(tempfile.mkdtemp(prefix="art-gallery-files-"))
+    try:
+        yield folder
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+@contextmanager
 def direct_connection():
     """A connection of our own, for setting up and inspecting state.
 

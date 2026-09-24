@@ -1008,6 +1008,15 @@ th.admin-table__number { text-align: right; }
   padding-right: var(--space-2);
 }
 
+/* The work's current image on the edit form: small, since the form is the
+   subject here, but matted like everywhere else, and never cropped. */
+.admin-form__current {
+  max-width: 12rem;
+  margin: 0 0 var(--space-3);
+}
+
+.admin-form__current figcaption { margin-top: var(--space-1); }
+
 .admin-form__check {
   display: flex;
   align-items: center;

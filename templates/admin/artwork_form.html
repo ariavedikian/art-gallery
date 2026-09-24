@@ -43,7 +43,11 @@
         </p>
       {% endif %}
 
-      <form class="admin-form" method="post" novalidate
+      {# enctype="multipart/form-data" is what lets a form carry a FILE.
+         Without it the browser sends the fields as one line of
+         name=value&name=value text, and a file input contributes only the
+         file's NAME: the server would get "painting.jpg" and no picture. #}
+      <form class="admin-form" method="post" novalidate enctype="multipart/form-data"
             action="{{ url_for('admin_artwork_update', artwork_id=artwork_id) if editing else url_for('admin_artwork_create') }}">
 
         {% if editing %}
@@ -119,8 +123,36 @@
         <fieldset class="admin-form__group">
           <legend>Display</legend>
 
+          {% if artwork %}
+            {# The image as it is now, with the size already stored for it. #}
+            <figure class="admin-form__current">
+              <div class="mat">
+                <img src="{{ url_for('static', filename='images/' ~ artwork.image) }}"
+                     width="{{ artwork.image_width }}" height="{{ artwork.image_height }}"
+                     alt="">
+              </div>
+              <figcaption class="muted small">Current image:
+                {{ artwork.image_width }} × {{ artwork.image_height }} px</figcaption>
+            </figure>
+          {% endif %}
+
+          {# Not form_field: a file input has no value= to fill back in (a
+             browser refuses, see validate_artwork), and it needs accept=.
+             accept= only filters the file picker -- it is a convenience for
+             the admin, not a check. The server decodes the file regardless. #}
+          <div class="field{% if errors.image_file %} field--error{% endif %}">
+            <label for="image_file">{{ "Replace with an upload" if editing else "Upload an image" }}</label>
+            <input type="file" id="image_file" name="image_file" accept="{{ accepted_types }}"
+                   aria-describedby="{% if errors.image_file %}error-image_file {% endif %}hint-image_file"
+                   {%- if errors.image_file %} aria-invalid="true"{% endif %}>
+            {% if errors.image_file %}<p class="field__error small" id="error-image_file">{{ errors.image_file }}</p>{% endif %}
+            <p class="field__hint muted small" id="hint-image_file">JPEG, PNG or WebP, up to
+              {{ max_upload_mb }} MB. An upload takes the place of the choice below. It is
+              saved as a fresh copy, without its camera data (location, serial number).</p>
+          </div>
+
           <div class="field{% if errors.image %} field--error{% endif %}">
-            <label for="image">Image</label>
+            <label for="image">Or use an existing image</label>
             <select id="image" name="image"
                     {%- if errors.image %} aria-invalid="true" aria-describedby="error-image"{% endif %}>
               <option value="">Choose…</option>
@@ -135,9 +167,9 @@
               {% endfor %}
             </select>
             {% if errors.image %}<p class="field__error small" id="error-image">{{ errors.image }}</p>{% endif %}
-            <p class="field__hint muted small">Placeholders only for now; uploads
-              come next. The pixel size is read from the file when you save,
-              so the page can reserve the image's space before it loads.</p>
+            <p class="field__hint muted small">The pixel size is read from the
+              file when you save, so the page can reserve the image's space
+              before it loads.</p>
           </div>
 
           {{ form_field("display_order", "Running order", values.display_order, errors,

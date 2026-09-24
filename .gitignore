@@ -4,5 +4,9 @@ __pycache__/
 *.db
 .env
 
+# Uploaded images are content, not code: like the database, they are made by
+# using the site, and backed up with it rather than committed.
+static/images/artworks/
+
 # Editor/tooling scratch, not part of the project
 .claude/

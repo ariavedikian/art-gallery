@@ -10,28 +10,15 @@ the browser can reserve the right-shaped space before the file arrives. A
 wrong number means the page jumps as it loads, or the image is squashed.
 """
 
-import shutil
 import sys
-import tempfile
 from contextlib import contextmanager
-from pathlib import Path
 
 from support import (PROJECT_ROOT, Results, create_admin, direct_connection,
-                     log_in, temp_database)
+                     log_in, temp_database, temp_folder)
 
 import app
 
 SVG = '<svg xmlns="http://www.w3.org/2000/svg" {attributes}></svg>'
-
-
-@contextmanager
-def temp_folder():
-    """A throwaway folder, deleted afterwards whatever happens."""
-    folder = Path(tempfile.mkdtemp(prefix="art-gallery-images-"))
-    try:
-        yield folder
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
 
 
 @contextmanager

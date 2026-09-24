@@ -12,6 +12,7 @@ the owner to understand every layer, not just to ship a site.
 | Backend | Python 3.13 + Flask | micro-framework; we write every step ourselves |
 | Database | SQLite + raw SQL | see the actual queries, no ORM magic |
 | Payments | Stripe (test mode), Stage 14 only | never handle card data ourselves |
+| Images | Pillow (Stage 17) | decoding untrusted uploads is not something to hand-roll |
 
 Do **not** introduce React, Next.js, Django, or an ORM without a compelling
 reason and an explicit discussion first.
@@ -58,8 +59,10 @@ styling, cluttered layouts.
   Werkzeug treats `/x` and `/x/` differently; one consistent style avoids
   surprise 404s and redirects.
 - **Placeholder images** live in `static/images/placeholders/` and are visibly
-  labelled as placeholders. Real images arrive in `static/images/jansem/` and
-  `static/images/carzou/` at Stage 17/21.
+  labelled as placeholders. Uploaded images live in `static/images/artworks/`
+  (gitignored, like the database: content, not code), one flat folder for
+  every artist. Which artist a work belongs to is a database fact the admin
+  can edit; a folder name would go stale.
 - **The database is generated, never edited by hand.** `database/schema.sql`
   and `database/seed.sql` are the source of truth; rebuild the .db file with
   `python init_db.py --reset`. The .db file is gitignored.
@@ -162,7 +165,8 @@ styling, cluttered layouts.
 - **The status vocabulary is stated twice** — `ORDER_STATUSES` in app.py and a
   `CHECK` constraint in schema.sql — because SQLite cannot read a Python dict.
   `tests/test_order_snapshot.py` fails the moment the two disagree.
-- **Tests are plain scripts** run with `python tests/<name>.py`, stdlib only,
+- **Tests are plain scripts** run with `python tests/<name>.py`, using only the
+  stdlib and the app's own dependencies (Pillow makes the test images),
   exiting non-zero on failure. No pytest until there are enough tests to earn
   the dependency.
 - **Concurrency is tested with threads, never by hand.** Clicking through the
@@ -178,7 +182,8 @@ styling, cluttered layouts.
 - **Business rules apply to the API too.** No price for a work that is not
   for sale, in JSON exactly as on the page.
 - **API errors are JSON with honest status codes**: 400 malformed, 404 not
-  found, 405 wrong method (with `Allow`), 409 refused by the work's state.
+  found, 405 wrong method (with `Allow`), 409 refused by the work's state,
+  413 too large.
   Outside `/api/` errors stay HTML.
 - **JSON types are checked, not coerced.** `"2"` is not `2`, and `true` is not
   `1` even though Python's `bool` is an `int`.
@@ -243,8 +248,32 @@ styling, cluttered layouts.
   from a form is a path, and `../../app.py` is a path too.
   `tests/test_images.py` also checks every seeded size against its file.
 - **Placeholders are SVG, and only SVG**: files we drew and committed, so
-  their contents are trusted. Uploaded images will never be SVG, since an
-  SVG can carry a `<script>` that runs as this site.
+  their contents are trusted. Uploads are never SVG, since an SVG can carry
+  a `<script>` that runs as this site.
+- **Nothing the browser says about an upload is used.** Filename, extension
+  and Content-Type are all chosen by the sender. `prepare_upload()` decodes
+  the file with Pillow, restricted to `UPLOAD_FORMATS` (JPEG, PNG, WebP; a
+  phone's MPO counts as JPEG), checks the pixel count from the header BEFORE
+  decoding (decompression bombs), turns it upright from its EXIF, and keeps
+  a copy re-encoded from the pixels. Only the colour profile is carried
+  over; EXIF, GPS, comments and trailing bytes are left behind.
+- **Uploads are named by us, once.** `secrets.token_hex(16)` plus the
+  extension of what the file turned out to be; hex because Windows ignores
+  case. Written with mode `"xb"`, so a name is never overwritten and a stored
+  path always means the same bytes. `image_file()` is the only code that maps
+  a stored path to a file on disk.
+- **Size limits are layered.** `MAX_CONTENT_LENGTH` (20 MB) refuses the
+  request with a 413 before the body is read; `MAX_IMAGE_SIDE` and
+  `MAX_IMAGE_PIXELS` refuse what it would decode to.
+- **Validation writes nothing.** The file is written after the whole form
+  passes, then the row. A file and a row cannot share a transaction, so if
+  the row is not written (an error, or the stock 409) the route deletes the
+  file: compensation, as in Stage 14. The worst case is a stray file, never
+  a row pointing at a missing one.
+- **A rejected form cannot return a file** (browsers refuse to fill in a file
+  input), so it says "choose the file again" rather than losing it silently.
+- **A form offers its own work's current image, never another work's.**
+  `image_choices(current)` takes `current` from the database, not the form.
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
@@ -318,6 +347,7 @@ python tests/test_api.py
 python tests/test_admin.py
 python tests/test_cms.py
 python tests/test_images.py
+python tests/test_uploads.py
 ```
 
 Create (or re-password) an admin. The database starts with none, and
@@ -336,10 +366,12 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
-│                  #   checkout, order, orders, 404, macros;
+│                  #   checkout, order, orders, 404, 413, macros;
 │                  #   admin/ holds login, dashboard, artwork_form,
 │                  #   artwork_delete, orders
-├── static/           # css/style.css, js/{lightbox,filter,cart}.js, images/
+├── static/           # css/style.css, js/{lightbox,filter,cart}.js,
+│                  #   images/placeholders (SVG, committed),
+│                  #   images/artworks (uploads, gitignored)
 ├── init_db.py        # rebuilds the database from SQL files
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
 │                  #   support.py holds the throwaway-database helpers
@@ -404,9 +436,13 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       optimisation, safe upload concepts. Split in three.
       **Part 1 (done):** sizes read from the file (`image_size()`), not typed;
       the form cannot override them; placeholders restricted to SVG.
-      **Part 2:** safe uploads (multipart forms, size limits, verify by
-      decoding, re-encode, generated filenames, never SVG).
-      **Part 3:** optimisation (resized copies, `srcset`/`sizes`).
+      **Part 2 (done):** safe uploads with Pillow: multipart forms, a 413
+      limit, decode-to-verify with an allowlist of formats, pixel limits,
+      EXIF orientation, re-encode without metadata, generated names written
+      once, the file deleted if its row is not saved.
+      **Part 3:** optimisation (resized copies, `srcset`/`sizes`), and
+      deleting the files a replaced or deleted work no longer uses (Part 2
+      leaves them on disk).
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
