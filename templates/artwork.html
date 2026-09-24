@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, price_status %}
 
 {#
   One artwork, in detail. The route fetches a single row and passes it in as
@@ -28,10 +28,7 @@
         <figure class="mat artwork-detail__figure">
           {# The only image on the page the visitor came to see, so it loads
              eagerly and at high priority. No lazy loading here. #}
-          <img src="{{ url_for('static', filename='images/' ~ artwork.image) }}"
-               alt="Placeholder image of {{ artwork.title }} by {{ artwork.artist_name }}"
-               width="{{ artwork.image_width }}" height="{{ artwork.image_height }}"
-               fetchpriority="high">
+          {{ artwork_image(artwork, "detail", fetchpriority="high") }}
         </figure>
 
         <div class="artwork-detail__body">

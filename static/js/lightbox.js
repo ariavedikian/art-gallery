@@ -74,6 +74,7 @@
         medium: card.dataset.medium,
         description: card.dataset.description,
         image: card.dataset.image,
+        srcset: card.dataset.srcset,
         href: card.dataset.href,
         priceHtml: card.querySelector(".price").innerHTML
       };
@@ -95,6 +96,11 @@
 
     var work = works[index];
 
+    // srcset BEFORE src, so the browser chooses from the list rather than
+    // starting to fetch the full-size original first. Assigned every time,
+    // even when empty: a placeholder has no srcset, and skipping the
+    // assignment would leave the previous work's list in place.
+    view.image.srcset = work.srcset;
     view.image.src = work.image;
     view.image.alt = "Placeholder image of " + work.title + " by " + work.artist;
     view.title.textContent = work.title;

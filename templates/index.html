@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, price_status %}
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
 
@@ -80,10 +80,8 @@
 
       <div class="spotlight">
         <figure class="mat spotlight__figure">
-          <img src="{{ url_for('static', filename='images/' ~ spotlight.image) }}"
-               alt="Placeholder image of {{ spotlight.title }} by {{ spotlight.artist_name }}"
-               width="{{ spotlight.image_width }}" height="{{ spotlight.image_height }}"
-               loading="lazy">
+          {# Same 3fr / 2fr columns as the artwork page, so the same sizes. #}
+          {{ artwork_image(spotlight, "detail", loading="lazy") }}
         </figure>
 
         <div class="spotlight__body">

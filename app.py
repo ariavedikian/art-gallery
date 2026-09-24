@@ -1016,6 +1016,20 @@ UPLOAD_DIR = Path(app.static_folder) / "images" / "artworks"
 # never from the name it arrived with.
 UPLOAD_FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 
+# Every upload is also saved as smaller copies ("renditions") at these widths,
+# so a phone showing a 300-pixel card is not sent a 4000-pixel photograph.
+# Only widths SMALLER than the original are made: enlarging adds bytes, not
+# detail. Roughly: a grid card on a phone or a retina laptop (480, 960), the
+# artwork page (1600), the lightbox on a large screen (2400).
+RENDITION_WIDTHS = (480, 960, 1600, 2400)
+
+# Renditions are WebP whatever the original was: typically a quarter to a
+# third smaller than a JPEG of the same visible quality, with transparency
+# when a PNG needs it, and read by every current browser. Quality is not a
+# percentage of anything -- it is the encoder's own scale -- and 82 is where
+# the difference from the original stops being visible at display size.
+RENDITION_QUALITY = 82
+
 # The largest side an image may claim, in pixels. A sanity bound, not a
 # design limit: anything bigger is a mistake or a hostile file.
 MAX_IMAGE_SIDE = 20000
@@ -1142,17 +1156,62 @@ def image_file(stored):
     static/images/. The one place that knows this, so the code that writes
     uploads and the code that reads them can never look in different folders.
     """
-    folder, _, name = stored.partition("/")
-    if folder == "artworks":
-        return UPLOAD_DIR / name
+    if is_upload(stored):
+        return UPLOAD_DIR / stored.removeprefix("artworks/")
     return Path(app.static_folder) / "images" / stored
+
+
+def is_upload(stored):
+    """True for an uploaded image ("artworks/..."), false for a placeholder."""
+    return stored.startswith("artworks/")
+
+
+def rendition_widths(width):
+    """The rendition widths made for an original this wide: only smaller ones."""
+    return [w for w in RENDITION_WIDTHS if w < width]
+
+
+def rendition_path(stored, width):
+    """ "artworks/ab12.jpg", 960 -> "artworks/ab12-960.webp".
+
+    Worked out from the original's name, never stored. The database keeps one
+    fact -- the original and its width -- and which renditions exist follows
+    from it and RENDITION_WIDTHS. Store facts, derive conclusions.
+    """
+    return f"artworks/{Path(stored).stem}-{width}.webp"
+
+
+def make_renditions(image, colour_profile):
+    """{width: WebP bytes} for each rendition of a decoded, upright image."""
+    # A palette ("P") or one-bit image cannot be resized smoothly: Pillow
+    # quietly falls back to picking the nearest pixel, and the result stays
+    # limited to the old palette. Convert to full colour first. A greyscale
+    # image's colour profile describes grey, so it cannot be attached to the
+    # RGB copy; a palette's colours are already RGB, so its profile can.
+    if image.mode not in ("RGB", "RGBA"):
+        if image.mode not in ("P", "PA"):
+            colour_profile = None
+        image = image.convert("RGBA" if image.has_transparency_data else "RGB")
+
+    renditions = {}
+    for width in rendition_widths(image.width):
+        height = max(1, round(image.height * width / image.width))
+        # LANCZOS: the slowest of Pillow's resampling filters, and the one
+        # that keeps fine detail -- brushwork, hatching -- when shrinking.
+        smaller = image.resize((width, height), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        smaller.save(buffer, "WEBP", quality=RENDITION_QUALITY,
+                     icc_profile=colour_profile)
+        renditions[width] = buffer.getvalue()
+    return renditions
 
 
 def prepare_upload(file):
     """Decode an uploaded file and re-encode a clean copy of it.
 
     Returns (upload, None) on success, where upload is
-    {"data": bytes, "suffix": ".jpg", "size": (w, h)}; or (None, message).
+    {"data": bytes, "suffix": ".jpg", "size": (w, h),
+     "renditions": {width: bytes}}; or (None, message).
     Writes nothing to disk: this is validation, and validation has no side
     effects. write_upload() does the writing, once the whole form is good.
 
@@ -1209,14 +1268,16 @@ def prepare_upload(file):
     buffer = io.BytesIO()
     clean.save(buffer, kind, icc_profile=colour_profile, **options)
     return {"data": buffer.getvalue(), "suffix": UPLOAD_FORMATS[kind],
-            "size": clean.size}, None
+            "size": clean.size,
+            "renditions": make_renditions(clean, colour_profile)}, None
 
 
 def write_upload(record):
     """If the form uploaded a file, save it and point the record at it.
 
-    Returns the file's path, or None when there was no upload. The caller
-    keeps the path so it can delete the file again if the row is not written.
+    Writes the original and its renditions. Returns the list of paths written
+    (empty when there was no upload); the caller keeps it so it can delete
+    them again if the row is not written.
 
     The name is generated, never taken from the upload. A visitor's filename
     can hold "../", spaces, characters Windows refuses, names Windows reserves
@@ -1230,19 +1291,34 @@ def write_upload(record):
     """
     upload = record["upload"]
     if upload is None:
-        return None
+        return []
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    name = secrets.token_hex(16) + upload["suffix"]
-    path = UPLOAD_DIR / name
-    with open(path, "xb") as file:
-        file.write(upload["data"])
-    record["image"] = f"artworks/{name}"
-    return path
+    stored = "artworks/" + secrets.token_hex(16) + upload["suffix"]
+    files = {stored: upload["data"]}
+    files.update({rendition_path(stored, width): data
+                  for width, data in upload["renditions"].items()})
+
+    # All or nothing. If the disk fills on the third file, the two already
+    # written are removed before the error goes on up: a half-written set
+    # would be an original missing some of the copies the page asks for.
+    written = []
+    try:
+        for name, data in files.items():
+            path = image_file(name)
+            with open(path, "xb") as file:
+                written.append(path)
+                file.write(data)
+    except BaseException:
+        discard_upload(written)
+        raise
+
+    record["image"] = stored
+    return written
 
 
-def discard_upload(path):
-    """Delete a file written for a row that was never saved."""
-    if path is not None:
+def discard_upload(paths):
+    """Delete files written for a row that was never saved."""
+    for path in paths:
         path.unlink(missing_ok=True)
 
 
@@ -1466,6 +1542,26 @@ def count_sales(artwork_id):
 
 
 # --- Template helpers --------------------------------------------------------
+
+@app.template_filter("srcset")
+def srcset(art):
+    """The srcset attribute for a work's image, or "" if it has none.
+
+    srcset lists the same picture at several widths ("...-480.webp 480w,
+    ...-960.webp 960w, ...jpg 3000w"); the browser picks one, using `sizes`
+    to know how wide it will be drawn and the screen's pixel density. The
+    original goes last, at its own width, for a screen that wants more than
+    the largest rendition. A placeholder is an SVG, which is sharp at any
+    size, so it gets no srcset at all.
+    """
+    if not is_upload(art["image"]):
+        return ""
+    candidates = [(rendition_path(art["image"], width), width)
+                  for width in rendition_widths(art["image_width"])]
+    candidates.append((art["image"], art["image_width"]))
+    return ", ".join(f"{url_for('static', filename='images/' + path)} {width}w"
+                     for path, width in candidates)
+
 
 @app.template_filter("usd")
 def usd(cents):
@@ -2153,7 +2249,7 @@ def admin_artwork_update(artwork_id):
         errors = {"inventory_quantity":
                   f"Stock changed from {loaded} to {now} while you were editing "
                   f"(probably a sale). Check this number, then save again."}
-        if written is not None:
+        if written:
             errors["image_file"] = "Nothing was saved, so choose the file again."
         # 409 Conflict: the request was fine; the work's state moved under it.
         return _artwork_form(values, errors, current, now, status=409)
@@ -2285,6 +2381,43 @@ def create_admin_command(username):
     set_admin_password(username, password)
     click.echo(f"{'Updated' if existing else 'Created'} admin {username!r}. "
                f"Log in at /admin/login.")
+
+
+@app.cli.command("rebuild-renditions")
+def rebuild_renditions_command():
+    """Make any renditions that are missing, for every uploaded image.
+
+        flask --app app rebuild-renditions
+
+    Needed when RENDITION_WIDTHS changes, and for images uploaded before
+    renditions existed. Safe to run any number of times: it only ever
+    creates files that are not there, and never touches an original.
+    """
+    rows = get_db().execute(
+        "SELECT id, image FROM artworks WHERE image LIKE 'artworks/%'").fetchall()
+    made = 0
+    for row in rows:
+        original = image_file(row["image"])
+        # Our own file, re-encoded at upload -- but it could have been
+        # deleted by hand, and one missing file should not stop the rest.
+        try:
+            with Image.open(original) as image:
+                image.load()
+                colour_profile = image.info.get("icc_profile")
+                missing = [w for w in rendition_widths(image.width)
+                           if not image_file(rendition_path(row["image"], w)).exists()]
+                if not missing:
+                    continue
+                renditions = make_renditions(image, colour_profile)
+        except OSError as error:
+            click.echo(f"#{row['id']}: cannot read {row['image']} ({error})", err=True)
+            continue
+        for width in missing:
+            with open(image_file(rendition_path(row["image"], width)), "xb") as file:
+                file.write(renditions[width])
+            made += 1
+        click.echo(f"#{row['id']}: made {', '.join(f'{w}px' for w in missing)}")
+    click.echo(f"{made} rendition(s) made for {len(rows)} uploaded image(s).")
 
 
 # --- Error handlers ----------------------------------------------------------

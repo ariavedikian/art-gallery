@@ -67,6 +67,37 @@
 
 
 {#
+  An artwork's <img>, the one way every page draws one.
+
+  slot says where on the page it goes, which decides `sizes`: how wide the
+  image will be DRAWN, told to the browser before any CSS has loaded, so it
+  can pick from the srcset (see the srcset filter in app.py) while the page
+  is still arriving. It is a promise about the layout, so these numbers
+  restate style.css -- change a column width there, change it here.
+
+      {{ artwork_image(art, "card", loading="lazy") }}
+
+  Extra attributes (loading, fetchpriority) go through kwargs | xmlattr, as
+  in form_field. A placeholder SVG gets no srcset, so `sizes` is left off too.
+  alt="" is for an image its caption already describes (the admin form).
+#}
+{% macro artwork_image(art, slot, alt=none) %}
+  {% set sizes = {
+       "card":   "(max-width: 540px) 100vw, (max-width: 820px) 50vw, (max-width: 1200px) 33vw, 300px",
+       "detail": "(max-width: 800px) 100vw, (max-width: 1200px) 60vw, 720px",
+       "cart":   "112px",
+       "admin":  "192px",
+     }[slot] %}
+  {% set candidates = art | srcset %}
+  <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
+       {%- if candidates %} srcset="{{ candidates }}" sizes="{{ sizes }}"{% endif %}
+       alt="{{ alt if alt is not none else 'Placeholder image of ' ~ art.title ~ ' by ' ~ art.artist_name }}"
+       width="{{ art.image_width }}" height="{{ art.image_height }}"
+       {{ kwargs | xmlattr }}>
+{% endmacro %}
+
+
+{#
   One artwork in a grid, used by artwork_grid above.
 
   show_artist works like a Python default argument. On an artist's own page
@@ -88,12 +119,10 @@
       data-medium="{{ art.medium }}"
       data-description="{{ art.description }}"
       data-image="{{ url_for('static', filename='images/' ~ art.image) }}"
+      data-srcset="{{ art | srcset }}"
       data-href="{{ url_for('artwork_page', artwork_id=art.id) }}">
     <figure class="mat mat--fixed">
-      <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
-           alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
-           width="{{ art.image_width }}" height="{{ art.image_height }}"
-           loading="lazy">
+      {{ artwork_image(art, "card", loading="lazy") }}
     </figure>
     <div class="artwork__meta">
       <h3 class="artwork__title work-title">

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import artwork_image %}
 
 {#
   The cart.
@@ -41,10 +42,7 @@
             <li class="cart-line{% if line.issue %} cart-line--issue{% endif %}">
 
               <figure class="mat cart-line__figure">
-                <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
-                     alt="Placeholder image of {{ art.title }} by {{ art.artist_name }}"
-                     width="{{ art.image_width }}" height="{{ art.image_height }}"
-                     loading="lazy">
+                {{ artwork_image(art, "cart", loading="lazy") }}
               </figure>
 
               <div class="cart-line__body">

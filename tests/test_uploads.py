@@ -306,10 +306,127 @@ def editing(results):
         results.check("another work cannot borrow that upload", response.status_code, 400)
 
 
+def gradient(size):
+    """PNG bytes of a smooth grey gradient: something worth resizing well."""
+    buffer = io.BytesIO()
+    Image.linear_gradient("L").resize(size).convert("RGB").save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def renditions(results):
+    print("  Smaller copies, and the srcset that offers them")
+    client = admin_client()
+    with temp_uploads() as folder:
+        srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+        big = io.BytesIO()
+        Image.linear_gradient("L").resize((3000, 2000)).convert("RGB").save(
+            big, "PNG", icc_profile=srgb)
+        client.post("/admin/artworks/new", data=form(big.getvalue()))
+        row = newest_artwork()
+        stem = row["image"].removeprefix("artworks/").removesuffix(".png")
+
+        names = sorted(path.name for path in folder.iterdir())
+        results.check("a 3000px upload gets four renditions beside the original",
+                      names, sorted([f"{stem}.png"] + [f"{stem}-{w}.webp"
+                                                      for w in (480, 960, 1600, 2400)]))
+        for width in (480, 960, 1600, 2400):
+            with Image.open(folder / f"{stem}-{width}.webp") as image:
+                results.check(f"the {width} rendition: WebP, {width} wide, same shape",
+                              (image.format, image.size),
+                              ("WEBP", (width, round(2000 * width / 3000))))
+        with Image.open(folder / f"{stem}-960.webp") as image:
+            results.check("renditions keep the colour profile",
+                          image.info.get("icc_profile") == srgb, True)
+
+        # Nothing is enlarged: a 1000px original gets only the 480 and 960.
+        client.post("/admin/artworks/new", data=form(gradient((1000, 800))))
+        small_stem = newest_artwork()["image"].removeprefix("artworks/").removesuffix(".png")
+        results.check("a 1000px upload gets only the smaller widths",
+                      sorted(p.name for p in folder.glob(f"{small_stem}*")),
+                      sorted([f"{small_stem}.png", f"{small_stem}-480.webp",
+                              f"{small_stem}-960.webp"]))
+
+        # The page offers them. Static files are served from the real static
+        # folder, not this temporary one, so each URL is checked against the
+        # file it names rather than fetched.
+        html = client.get(f"/artwork/{row['id']}").get_data(as_text=True)
+        found = re.search(r'srcset="([^"]+)" sizes="([^"]+)"', html)
+        results.check("the artwork page's image has srcset and sizes", bool(found), True)
+        candidates = [part.strip().split(" ") for part in found.group(1).split(",")]
+        results.check("srcset lists four renditions, then the original at 3000w",
+                      [width for _, width in candidates],
+                      ["480w", "960w", "1600w", "2400w", "3000w"])
+        results.check("every URL in it names a file that exists",
+                      all(app.image_file(url.removeprefix("/static/images/")).is_file()
+                          for url, _ in candidates), True)
+
+        gallery = client.get("/gallery").get_data(as_text=True)
+        results.check("the card carries the srcset for the lightbox",
+                      f'data-srcset="{found.group(1)}"' in gallery, True)
+
+        placeholder = client.get("/artwork/1").get_data(as_text=True)
+        image_tag = re.search(r"<img[^>]*placeholders/artwork-01\.svg[^>]*>", placeholder).group(0)
+        results.check("a placeholder SVG gets no srcset and no sizes",
+                      ("srcset" in image_tag, "sizes" in image_tag), (False, False))
+
+
+def all_or_nothing(results):
+    print("  A set of files is written completely, or not at all")
+    client = admin_client()
+    with temp_uploads() as folder:
+        # Force the name, and put a file where the 960 rendition must go, so
+        # writing the set fails part-way through.
+        in_the_way = folder / ("a" * 32 + "-960.webp")
+        in_the_way.write_bytes(b"not ours")
+        real_token = app.secrets.token_hex
+        app.secrets.token_hex = lambda n: "a" * 32
+        app.app.logger.disabled = True
+        try:
+            response = client.post("/admin/artworks/new", data=form(gradient((1200, 900))))
+        finally:
+            app.secrets.token_hex = real_token
+            app.app.logger.disabled = False
+        results.check("the save fails (500)", response.status_code, 500)
+        results.check("no artwork row was written", count_artworks(), 6)
+        results.check("what it had written is gone",
+                      [p.name for p in folder.iterdir()], [in_the_way.name])
+        results.check("...and the file it met, which was not its own, is untouched",
+                      in_the_way.read_bytes(), b"not ours")
+
+
+def rebuilding(results):
+    print("  flask rebuild-renditions")
+    client = admin_client()
+    runner = app.app.test_cli_runner()
+    with temp_uploads() as folder:
+        client.post("/admin/artworks/new", data=form(gradient((1200, 900))))
+        stem = newest_artwork()["image"].removeprefix("artworks/").removesuffix(".png")
+        for path in folder.glob(f"{stem}-*.webp"):
+            path.unlink()   # as if uploaded before renditions existed
+
+        output = runner.invoke(args=["rebuild-renditions"]).output
+        results.check("it makes the missing renditions",
+                      sorted(p.name for p in folder.glob(f"{stem}-*.webp")),
+                      [f"{stem}-480.webp", f"{stem}-960.webp"])
+        results.check("...and says what it did", "made 480px, 960px" in output, True)
+
+        again = runner.invoke(args=["rebuild-renditions"]).output
+        results.check("run again, it makes nothing",
+                      "0 rendition(s) made for 1 uploaded image(s)" in again, True)
+
+        with direct_connection() as connection:
+            connection.execute("UPDATE artworks SET image = 'artworks/missing.jpg' WHERE id = 1")
+            connection.commit()
+        result = runner.invoke(args=["rebuild-renditions"])
+        results.check("a missing original is reported, and the rest carry on",
+                      ("cannot read artworks/missing.jpg" in result.output,
+                       "for 2 uploaded image(s)" in result.output), (True, True))
+
+
 def main():
     results = Results()
     for case in (accepting, cleaning, refusing, size_limit, nothing_half_done,
-                 editing):
+                 editing, renditions, all_or_nothing, rebuilding):
         with temp_database():
             case(results)
         print()

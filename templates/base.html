@@ -157,7 +157,9 @@
   <dialog class="lightbox" id="lightbox" aria-label="Artwork viewer">
     <div class="lightbox__inner">
       <figure class="lightbox__figure">
-        <img class="lightbox__image" id="lightbox-image" src="" alt="">
+        {# sizes is fixed here; lightbox.js swaps srcset and src per work. #}
+        <img class="lightbox__image" id="lightbox-image" src="" alt=""
+             sizes="(max-width: 800px) 100vw, calc(100vw - 24rem)">
       </figure>
 
       <div class="lightbox__info">

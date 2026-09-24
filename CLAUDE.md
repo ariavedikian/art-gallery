@@ -274,6 +274,17 @@ styling, cluttered layouts.
   input), so it says "choose the file again" rather than losing it silently.
 - **A form offers its own work's current image, never another work's.**
   `image_choices(current)` takes `current` from the database, not the form.
+- **Every upload gets renditions**: WebP copies at `RENDITION_WIDTHS`
+  (480/960/1600/2400), only those narrower than the original, named
+  `<name>-<width>.webp` beside it. Which exist is derived from the original's
+  width, never stored. The set is written all or nothing. When
+  `RENDITION_WIDTHS` changes, run `flask --app app rebuild-renditions`.
+- **One image, one macro.** Every artwork `<img>` comes from `artwork_image(art,
+  slot)` in macros.html, which adds `srcset` (the `srcset` filter) and the
+  slot's `sizes`. `sizes` restates the CSS column widths: change a layout in
+  style.css, change its slot there. Placeholder SVGs get neither attribute.
+- **The lightbox assigns `srcset` before `src`, every time, even when empty**,
+  or a placeholder would inherit the previous work's list.
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
@@ -348,6 +359,13 @@ python tests/test_admin.py
 python tests/test_cms.py
 python tests/test_images.py
 python tests/test_uploads.py
+```
+
+Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
+images uploaded before Stage 17 part 3). Safe to run repeatedly:
+
+```powershell
+flask --app app rebuild-renditions
 ```
 
 Create (or re-password) an admin. The database starts with none, and
@@ -433,16 +451,19 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       optimistic concurrency on stock, delete refused for sold works, and
       `paid → shipped` via `ORDER_TRANSITIONS`.
 - [~] **17 — Image management.** Static file organisation, naming conventions,
-      optimisation, safe upload concepts. Split in three.
+      optimisation, safe upload concepts. Split in four.
       **Part 1 (done):** sizes read from the file (`image_size()`), not typed;
       the form cannot override them; placeholders restricted to SVG.
       **Part 2 (done):** safe uploads with Pillow: multipart forms, a 413
       limit, decode-to-verify with an allowlist of formats, pixel limits,
       EXIF orientation, re-encode without metadata, generated names written
       once, the file deleted if its row is not saved.
-      **Part 3:** optimisation (resized copies, `srcset`/`sizes`), and
-      deleting the files a replaced or deleted work no longer uses (Part 2
-      leaves them on disk).
+      **Part 3 (done):** WebP renditions at four widths, `srcset`/`sizes`
+      through one `artwork_image` macro, the lightbox too, and
+      `flask rebuild-renditions`.
+      **Part 4:** deleting the files a replaced or deleted work no longer
+      uses (row first, then files: the mirror of creating), and a sweep for
+      stray files left by crashes.
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard

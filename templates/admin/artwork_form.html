@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import form_field %}
+{% from "macros.html" import artwork_image, form_field %}
 
 {#
   Create or edit an artwork. One template for both jobs: `artwork_id` is set
@@ -127,9 +127,7 @@
             {# The image as it is now, with the size already stored for it. #}
             <figure class="admin-form__current">
               <div class="mat">
-                <img src="{{ url_for('static', filename='images/' ~ artwork.image) }}"
-                     width="{{ artwork.image_width }}" height="{{ artwork.image_height }}"
-                     alt="">
+                {{ artwork_image(artwork, "admin", alt="") }}
               </div>
               <figcaption class="muted small">Current image:
                 {{ artwork.image_width }} × {{ artwork.image_height }} px</figcaption>
