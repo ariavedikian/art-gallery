@@ -9,6 +9,10 @@
 
   <title>{% block title %}{{ gallery_name }}{% endblock %}</title>
 
+  {# Extra tags a single page needs in its <head>. The admin pages use it to
+     ask search engines not to index them. #}
+  {% block head %}{% endblock %}
+
   <!-- Web fonts, served by Google Fonts.
        preconnect opens the network connection early, before the stylesheet
        has even asked for the font files, which saves a round trip.
@@ -34,6 +38,22 @@
 
   <!-- Lets keyboard users jump straight past the nav to the content. -->
   <a class="skip-link" href="#main">Skip to content</a>
+
+  {# Shown only to a logged-in admin. current_admin comes from the context
+     processor, so every page gets it without any route passing it. Logging
+     out is a form with a button, not a link, because logout is a POST --
+     see admin_logout() in app.py for why. #}
+  {% if current_admin %}
+    <div class="admin-bar">
+      <div class="container admin-bar__inner">
+        <p>Signed in as <strong>{{ current_admin.username }}</strong></p>
+        <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+        <form method="post" action="{{ url_for('admin_logout') }}">
+          <button class="admin-bar__button" type="submit">Log out</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
 
   <header class="site-header">
     <div class="container site-header__inner">

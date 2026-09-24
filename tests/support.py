@@ -129,3 +129,27 @@ def place_order(artwork_id, quantity=1):
         raise AssertionError(f"checkout did not place an order: {location!r}")
 
     return client, location.rsplit("/", 1)[-1]
+
+
+# The throwaway admin used by the tests. It only ever exists inside a temporary
+# database that is deleted when the test finishes, so this is test data, not a
+# credential for anything real.
+TEST_ADMIN = "curator"
+TEST_PASSWORD = "correct horse battery staple"
+
+
+def create_admin(username=TEST_ADMIN, password=TEST_PASSWORD):
+    """Create an admin in the current (temporary) database.
+
+    Goes through the app's own set_admin_password(), so the hash is made
+    exactly as `flask create-admin` makes it. app_context() provides the `g`
+    that get_db() keeps its connection on, and closes it afterwards.
+    """
+    with app.app.app_context():
+        app.set_admin_password(username, password)
+
+
+def log_in(client, username=TEST_ADMIN, password=TEST_PASSWORD, next_url=""):
+    """Post the login form, as a browser would. Returns the response."""
+    return client.post("/admin/login", data={
+        "username": username, "password": password, "next": next_url})

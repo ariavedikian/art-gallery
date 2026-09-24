@@ -188,6 +188,26 @@ styling, cluttered layouts.
 - **Elements JavaScript updates are always rendered**, hidden when empty
   (the nav cart count), since a script cannot update an element that was
   never in the page.
+- **Passwords are stored only as Werkzeug hashes** (salted, deliberately
+  slow). Never hand-rolled, never logged, never sent back inside a page.
+- **No credential lives in a committed file.** `seed.sql` creates no admin;
+  `flask create-admin` prompts for the password without echoing it.
+- **Every admin route carries `@admin_required`, below `@app.get`/`@app.post`.**
+  Decorators apply bottom-up; the other order registers the unlocked view.
+  `tests/test_admin.py` walks the whole routing table, so a new /admin route
+  that forgets the lock fails the suite.
+- **The session holds the admin's id; the database decides.** `current_admin()`
+  re-reads the row each request, so deleting an admin locks them out at once.
+- **One message for every failed login**, and a dummy hash check for unknown
+  usernames, so neither the wording nor the timing reveals which exist.
+- **`next=` is honoured only if it is a path on this site** (`safe_next()`):
+  no scheme, no host, not `//`, no backslash. Otherwise, an open redirect.
+- **Logout is a POST**, and only removes the admin key; the visitor's cart and
+  remembered orders belong to the browser, not the login.
+- **Admin responses are `Cache-Control: no-store`**, and admin pages carry
+  `noindex`. The public site never links to `/admin`.
+- **The session cookie is `SameSite=Lax`**, set explicitly rather than trusted
+  to browser defaults. Full CSRF protection is Stage 20.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
   a query.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
@@ -263,6 +283,14 @@ Run the tests with:
 python tests/test_checkout_race.py
 python tests/test_order_snapshot.py
 python tests/test_api.py
+python tests/test_admin.py
+```
+
+Create (or re-password) an admin. The database starts with none, and
+`init_db.py --reset` empties the table again:
+
+```powershell
+flask --app app create-admin yourname
 ```
 
 ## Layout
@@ -274,12 +302,14 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
-│                  #   checkout, order, orders, 404, macros
+│                  #   checkout, order, orders, 404, macros;
+│                  #   admin/ holds login and dashboard
 ├── static/           # css/style.css, js/{lightbox,filter,cart}.js, images/
 ├── init_db.py        # rebuilds the database from SQL files
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
 │                  #   support.py holds the throwaway-database helpers
-└── database/         # schema.sql (artists, artworks, orders, order_items),
+└── database/         # schema.sql (artists, artworks, orders, order_items,
+                  #   admins),
                   #   seed.sql, art_gallery.db (generated)
 ```
 
@@ -328,8 +358,12 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       are useful. `GET /api/artworks` (same filters as All works),
       `GET /api/artworks/<id>`, `POST /api/cart`; Add to cart uses it via
       `static/js/cart.js`, falling back to the plain form.
-- [ ] **16 — Admin / CMS.** Add/edit/delete artwork, pricing, availability,
-      featured flag. Simple auth.
+- [~] **16 — Admin / CMS.** Add/edit/delete artwork, pricing, availability,
+      featured flag. Simple auth. Split in two, like Stage 10.
+      **Part 1 done:** `admins` table with hashed passwords,
+      `flask create-admin`, login/logout, `@admin_required`, safe `next=`,
+      read-only dashboard. **Part 2 to do:** create/edit/delete artworks with
+      validation, and marking orders shipped (`paid → shipped`).
 - [ ] **17 — Image management.** Static file organisation, naming conventions,
       optimisation, safe upload concepts.
 - [ ] **18 — Responsive polish.** Media queries, responsive type and grids,

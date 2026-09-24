@@ -886,7 +886,104 @@ a.feature__media:hover img { transform: scale(1.03); }
 }
 
 
-/* --- 19. Lightbox ---------------------------------------------------------- */
+/* --- 19. Admin -------------------------------------------------------------- */
+
+/* A thin strip above the site header, only ever seen by a logged-in admin.
+   Dark, so it is unmistakable which mode you are in -- and it deliberately
+   breaks the gallery's quiet look, because that is its job. */
+.admin-bar {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.8125rem;
+}
+
+.admin-bar__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: 0.5rem;
+}
+
+.admin-bar__inner p { margin-right: auto; }
+.admin-bar a { color: inherit; }
+
+/* A button that reads as a link: logout must be a form (it is a POST), but a
+   full-size button would shout in a strip this small. */
+.admin-bar__button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.admin-bar__button:focus-visible,
+.admin-bar a:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
+}
+
+.admin-login { max-width: 28rem; }
+.admin-login__error { margin-top: var(--space-3); }
+
+.admin-login__form {
+  margin-top: var(--space-4);
+}
+
+.admin-login__form > * + * { margin-top: var(--space-3); }
+
+/* Wide tables scroll sideways inside this box instead of making the whole
+   page scroll. Proper small-screen layouts are Stage 18. */
+.admin-table-wrap {
+  margin-top: var(--space-4);
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.admin-table th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--ink);
+  white-space: nowrap;
+}
+
+.admin-table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.admin-table a { color: inherit; }
+
+.admin-table__sub {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+/* Numbers line up on the right, digit under digit, so a column of prices can
+   be compared at a glance. */
+.admin-table__number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+th.admin-table__number { text-align: right; }
+
+
+/* --- 20. Lightbox ---------------------------------------------------------- */
 
 /* A <dialog> is hidden until showModal() opens it, then sits in the browser
    top layer above every other element, with ::backdrop dimming the page. */
@@ -986,7 +1083,7 @@ a.feature__media:hover img { transform: scale(1.03); }
   outline-offset: 3px;
 }
 
-/* --- 20. Footer ------------------------------------------------------------- */
+/* --- 21. Footer ------------------------------------------------------------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -996,7 +1093,7 @@ a.feature__media:hover img { transform: scale(1.03); }
 .site-footer__inner > * + * { margin-top: var(--space-1); }
 .site-footer .muted { font-size: 0.8125rem; max-width: var(--measure); }
 
-/* --- 21. Responsive --------------------------------------------------------- */
+/* --- 22. Responsive --------------------------------------------------------- */
 
 /* A media query applies rules only when a condition is true. Below 800px
    every two-column layout collapses to a single column. */

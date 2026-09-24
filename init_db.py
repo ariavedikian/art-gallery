@@ -54,6 +54,7 @@ def build(reset=False):
         # orders and order_items are created empty. Counting them here is a
         # cheap way to prove the tables exist after a rebuild.
         orders = connection.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+        admins = connection.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
     finally:
         # Always close, even if something above raised an error.
         connection.close()
@@ -61,6 +62,13 @@ def build(reset=False):
     print(f"Created {DB_PATH}")
     print(f"  {artists} artists, {artworks} artworks (placeholder content)")
     print(f"  {orders} orders")
+    print(f"  {admins} admins")
+
+    # A rebuild always empties the admins table, since seed.sql never holds a
+    # password. Say what to do about it rather than leave a locked admin page
+    # to be discovered later.
+    if admins == 0:
+        print("  To use /admin, create an admin: flask --app app create-admin <name>")
 
 
 if __name__ == "__main__":

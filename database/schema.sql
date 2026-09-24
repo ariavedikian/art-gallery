@@ -21,6 +21,7 @@ PRAGMA foreign_keys = ON;
 -- Drop in reverse order of dependency: artworks points at artists, so it has
 -- to go first. Dropping artists while artworks still referenced it would be
 -- exactly the orphaned-reference problem these tables exist to prevent.
+DROP TABLE IF EXISTS admins;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS artworks;
@@ -213,3 +214,29 @@ CREATE INDEX idx_order_items_order_id ON order_items (order_id);
 -- The orders list is read newest first. ISO 8601 text sorts chronologically,
 -- which is exactly why that format was chosen for placed_at.
 CREATE INDEX idx_orders_placed_at ON orders (placed_at DESC);
+
+
+-- --- admins ------------------------------------------------------------------
+-- The people who can use /admin. Deliberately EMPTY after a rebuild: seed.sql
+-- never creates one, because a password in a committed file is a password
+-- everyone with the repository knows. Create one from your own terminal:
+--
+--     flask --app app create-admin yourname
+--
+-- which asks for the password without echoing it.
+CREATE TABLE admins (
+    id            INTEGER PRIMARY KEY,
+
+    -- COLLATE NOCASE makes UNIQUE and every comparison ignore case, so
+    -- "Ari" and "ari" cannot be two different admins, and logging in as
+    -- either finds the same row.
+    username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+
+    -- NOT the password. A salted, deliberately slow one-way hash of it, made
+    -- by Werkzeug's generate_password_hash. The text starts with the method
+    -- used ("scrypt:..."), so a stronger method can be adopted later without
+    -- breaking the hashes already stored.
+    password_hash TEXT NOT NULL,
+
+    created_at    TEXT NOT NULL
+);

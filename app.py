@@ -1,7 +1,7 @@
 """
 Art Gallery — a Flask web application.
 
-Stage 15: a JSON API alongside the pages.
+Stage 16 (part 1): admin accounts and a locked admin area.
 
 HTTP is stateless — two requests from the same visitor arrive as strangers —
 so a cart has to be stored somewhere and handed back with every request. This
@@ -19,16 +19,24 @@ The payment step is a clearly-labelled MOCK until Stage 14 (deferred).
 Under /api/ the same data is served as JSON rather than HTML. Those routes
 call the same data-access functions as the pages, so a rule written once --
 the filters, the `status` rule, the cart limits -- serves both.
+
+Under /admin/ is the gallery's private area. Admins are rows in the admins
+table holding a password HASH, never a password; the first one is created
+from the terminal with `flask --app app create-admin <name>`.
 """
 
+import functools
 import os
 import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
+import click
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
                    session, url_for)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 
@@ -42,6 +50,15 @@ GALLERY_NAME = "Gallery Placeholder"
 # box. A real deployment sets ART_GALLERY_SECRET_KEY to a long random value
 # and never commits it; Stage 20 comes back to this properly.
 app.secret_key = os.environ.get("ART_GALLERY_SECRET_KEY", "dev-key-not-a-secret")
+
+# Now that the session cookie can prove someone is an ADMIN, how it travels
+# matters. SameSite=Lax tells the browser not to send it along with a POST
+# that starts on another website. Without that, a page elsewhere could hold a
+# hidden form that posts to /admin/... and the admin's own browser would
+# helpfully attach their login. Modern browsers already default to Lax;
+# saying it explicitly means we rely on our code, not on their defaults.
+# (The full defence against cross-site requests is Stage 20.)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # Built from database/schema.sql + seed.sql by: python init_db.py --reset
 DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
@@ -773,6 +790,153 @@ def get_order_items(order_id):
     """, (order_id,))
 
 
+# --- Admin: who is logged in -------------------------------------------------
+# Authentication answers "who are you?" -- the login. Authorisation answers
+# "may you do this?" -- the lock on each admin page. There is one kind of user
+# here, so authorisation is simply "is an admin logged in", but they remain
+# two separate questions, and Stage 20 will care about the difference.
+
+ADMIN_KEY = "admin_id"
+
+# Length is what makes a password hard to guess, far more than rules about
+# symbols and capitals, which mostly produce "Password1!". Twelve characters
+# is a sensible floor; a passphrase of four ordinary words clears it easily.
+MIN_PASSWORD_LENGTH = 12
+
+
+def get_admin_by_username(username):
+    """The admin row for this username, or None. Case-insensitive, because
+    the column is declared COLLATE NOCASE in schema.sql."""
+    return query_db(
+        "SELECT id, username, password_hash FROM admins WHERE username = ?",
+        (username,), one=True)
+
+
+def current_admin():
+    """The logged-in admin (id and username), or None. Looked up once per request.
+
+    The session holds only the admin's id. The row is re-read from the
+    database on every request rather than trusted from the cookie, for the
+    same reason the cart re-reads prices: the cookie can say who you WERE.
+    Deleting an admin's row therefore locks them out on their very next
+    click, even though their cookie still carries the old id.
+    """
+    if "admin" not in g:
+        admin = None
+        admin_id = session.get(ADMIN_KEY)
+
+        if isinstance(admin_id, int):
+            admin = query_db("SELECT id, username FROM admins WHERE id = ?",
+                             (admin_id,), one=True)
+            if admin is None:
+                # The account is gone. Forget it, so the stale id stops
+                # being looked up on every request.
+                session.pop(ADMIN_KEY, None)
+
+        g.admin = admin
+    return g.admin
+
+
+def admin_required(view):
+    """Lock a route so only a logged-in admin can reach it.
+
+    This is a DECORATOR: a function that takes a function and returns a new
+    one wrapped around it. Writing
+
+        @admin_required
+        def admin_dashboard(): ...
+
+    is shorthand for  admin_dashboard = admin_required(admin_dashboard).
+    From then on, calling the view really calls `wrapped` below, which checks
+    first and only then hands over to the original.
+
+    functools.wraps copies the original's name onto the wrapper. Flask uses a
+    view's name as its endpoint -- what url_for("admin_dashboard") looks up --
+    so without it, every locked route would be called "wrapped" and Flask
+    would refuse to register the second one.
+    """
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_admin() is None:
+            # Remember where they were going, so logging in can take them
+            # there. full_path keeps the query string, but ends in a bare "?"
+            # when there is none, so fall back to the plain path then.
+            target = request.full_path if request.query_string else request.path
+            return redirect(url_for("admin_login", next=target))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def safe_next(target):
+    """Where to send someone after logging in: `target` if it is safely ours.
+
+    `next` arrives in the URL, so it can say anything. Honouring it blindly is
+    an OPEN REDIRECT: an attacker sends a link to the real login page with
+    next=https://evil.example, the victim logs in on the genuine site, and is
+    then handed to a fake one that asks them to "log in again".
+
+    So only a path on this site is accepted: it must start with "/", carry no
+    scheme or host, and not start with "//" -- which browsers read as "same
+    scheme, different host". Backslashes are refused outright because some
+    browsers treat /\\evil.example exactly like //evil.example. Anything else
+    goes to the admin dashboard instead.
+    """
+    if target:
+        parts = urlsplit(target)
+        if (target.startswith("/") and not target.startswith("//")
+                and "\\" not in target
+                and not parts.scheme and not parts.netloc):
+            return target
+    return url_for("admin_dashboard")
+
+
+@functools.cache
+def _dummy_hash():
+    """A real hash of nothing in particular, computed once and then reused.
+
+    When someone logs in with a username that does not exist, there is no
+    stored hash to check against -- and skipping the check would make that
+    failure noticeably FASTER than a wrong password for a real admin. By
+    timing the responses, an attacker could learn which usernames exist.
+    Checking against this instead makes both failures take the same time.
+    """
+    return generate_password_hash(secrets.token_urlsafe(16))
+
+
+def password_problem(password, username=""):
+    """Why this password is not acceptable, or None if it is."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Use at least {MIN_PASSWORD_LENGTH} characters."
+    if username and password.lower() == username.lower():
+        return "The password cannot be the username."
+    return None
+
+
+def set_admin_password(username, password):
+    """Create this admin, or give an existing one a new password.
+
+    generate_password_hash does everything a password needs: it adds a random
+    SALT (so two admins with the same password get different hashes, and a
+    precomputed table of common passwords is useless), and uses a method that
+    is deliberately SLOW (a fraction of a second for one login; ruinous for
+    anyone trying billions of guesses against a stolen database).
+
+    Only the hash is written. The password itself exists in memory for the
+    length of this call and nowhere else.
+    """
+    password_hash = generate_password_hash(password)
+    db = get_db()
+
+    if get_admin_by_username(username) is None:
+        db.execute(
+            "INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)",
+            (username, password_hash,
+             datetime.now(timezone.utc).isoformat(timespec="seconds")))
+    else:
+        db.execute("UPDATE admins SET password_hash = ? WHERE username = ?",
+                   (password_hash, username))
+
+
 # --- Template helpers --------------------------------------------------------
 
 @app.template_filter("usd")
@@ -833,6 +997,11 @@ def inject_site_globals():
         # The Orders link is hidden until this browser has placed one. An
         # empty page nobody can fill is worse than no link.
         "remembered_orders": len(get_remembered_orders()),
+
+        # The admin bar in base.html shows only when someone is logged in.
+        # The public site never links to /admin at all: there is no reason
+        # to advertise a login page to everyone who visits.
+        "current_admin": current_admin(),
     }
 
 
@@ -1282,6 +1451,97 @@ def api_cart_add():
     }
 
 
+# --- Admin routes ------------------------------------------------------------
+
+@app.get("/admin/login")
+def admin_login():
+    # Already logged in: nothing to do here, go where they were heading.
+    if current_admin() is not None:
+        return redirect(safe_next(request.args.get("next")))
+
+    return render_template("admin/login.html",
+                           next=request.args.get("next", ""),
+                           username="", error=None)
+
+
+@app.post("/admin/login")
+def admin_login_submit():
+    """Check a username and password, and log the admin in if they match.
+
+    One message for every failure -- unknown username or wrong password --
+    because telling them apart tells an attacker which usernames are real,
+    which halves their work. See _dummy_hash() for the same idea applied to
+    how long the answer takes.
+    """
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    next_url = request.form.get("next", "")
+
+    admin = get_admin_by_username(username) if username else None
+
+    # check_password_hash hashes what was typed the same way, with the same
+    # salt, and compares. It also compares in constant time, so how long the
+    # comparison takes does not reveal how many characters were right.
+    stored = admin["password_hash"] if admin is not None else _dummy_hash()
+    if not (check_password_hash(stored, password) and admin is not None):
+        # 400, like any rejected form. The username is sent back so it does
+        # not have to be retyped; the password never is -- it should not
+        # travel back to the browser inside a page.
+        return render_template("admin/login.html", next=next_url,
+                               username=username,
+                               error="That username and password do not match."), 400
+
+    session[ADMIN_KEY] = admin["id"]
+    flash(f"Logged in as {admin['username']}.", "success")
+    return redirect(safe_next(next_url))
+
+
+@app.post("/admin/logout")
+def admin_logout():
+    """POST, not GET, and this is a case where it matters.
+
+    A GET logout can be triggered by anything that makes the browser fetch a
+    URL -- an <img src="/admin/logout"> on any page the admin visits would log
+    them out. Harmless-sounding, but it is exactly the class of problem that
+    becomes serious for every other admin action, so logout sets the pattern.
+
+    Only the admin key is removed. The rest of the session -- a cart, the
+    remembered orders -- belongs to the visitor, not to the admin login.
+    """
+    session.pop(ADMIN_KEY, None)
+    flash("Logged out.", "notice")
+    return redirect(url_for("home"))
+
+
+# The ORDER of these two decorators matters. Decorators apply bottom-up, so
+# @admin_required wraps the view first, and @app.get then registers the
+# WRAPPED version. Swap them and Flask registers the original, unlocked view.
+@app.get("/admin")
+@admin_required
+def admin_dashboard():
+    """Every artwork, as the gallery sees it rather than as the public does.
+
+    Same function as the All works page -- search_artworks() with no filters
+    -- but a different audience, so different rules for what is shown: the
+    admin sees the price of a work that is not for sale, the stock count, and
+    whether it is featured, none of which the public pages display.
+    """
+    return render_template("admin/dashboard.html", artworks=search_artworks())
+
+
+@app.after_request
+def no_store_for_admin(response):
+    """Tell the browser not to keep copies of admin pages.
+
+    Without this, after logging out on a shared computer, the Back button can
+    show the admin pages again straight from the browser's cache -- no request
+    is made, so no login is checked. no-store means there is nothing to show.
+    """
+    if request.path.startswith("/admin"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.route("/about")
 def about():
     return "Placeholder gallery description."
@@ -1289,7 +1549,46 @@ def about():
 
 @app.route("/health")
 def health():
-    return {"status": "ok", "stage": 15}
+    return {"status": "ok", "stage": 16}
+
+
+# --- Command line ------------------------------------------------------------
+
+@app.cli.command("create-admin")
+@click.argument("username")
+def create_admin_command(username):
+    """Create an admin, or change an existing admin's password.
+
+        flask --app app create-admin yourname
+
+    The password is asked for in the terminal with hide_input, so it is not
+    shown as you type, not stored in your shell history (it was never part of
+    the command), and not written anywhere except as a hash.
+
+    `flask` runs this inside an application context, so get_db() works here
+    exactly as it does in a request.
+    """
+    username = username.strip()
+    if not username:
+        raise click.BadParameter("the username cannot be blank")
+
+    existing = get_admin_by_username(username)
+    if existing is not None and not click.confirm(
+            f"{existing['username']} already exists. Change their password?"):
+        click.echo("Nothing changed.")
+        return
+
+    password = click.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    problem = password_problem(password, username)
+    if problem:
+        # ClickException prints the message and exits with a non-zero code,
+        # without a traceback: a mistake, not a crash.
+        raise click.ClickException(problem)
+
+    set_admin_password(username, password)
+    click.echo(f"{'Updated' if existing else 'Created'} admin {username!r}. "
+               f"Log in at /admin/login.")
 
 
 # --- Error handlers ----------------------------------------------------------

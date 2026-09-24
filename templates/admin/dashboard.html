@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{#
+  The admin dashboard: every artwork, as the gallery sees it.
+
+  Read-only in part 1. Part 2 adds editing, creating and deleting.
+
+  The rows come from search_artworks(), the same function behind the public
+  All works page. What differs is what gets SHOWN: the price of a work that is
+  not for sale, the stock count, the featured flag -- things the public pages
+  hide. Same data, different audience, different rules for display.
+#}
+
+{% block title %}Admin — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <section class="section section--flush-top">
+    <div class="container">
+      <p class="eyebrow">Gallery staff</p>
+      <h1 class="display">Collection</h1>
+      <p class="lead">Every work, in the gallery's running order. Editing
+        arrives in the next part of this stage.</p>
+
+      {#
+        A real <table>, because this IS tabular data: every row has the same
+        columns and the point is to compare down them. <th scope="col"> tells a
+        screen reader which heading belongs to each cell, so it can announce
+        "Price: $4,800" rather than a bare number.
+
+        The wrapper scrolls sideways on a narrow screen instead of squashing
+        the table. Proper small-screen layouts are Stage 18.
+      #}
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <caption class="visually-hidden">All artworks</caption>
+          <thead>
+            <tr>
+              <th scope="col">Work</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="admin-table__number">Price</th>
+              <th scope="col" class="admin-table__number">Stock</th>
+              <th scope="col">Featured</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for art in artworks %}
+              <tr>
+                <td>
+                  <a class="work-title" href="{{ url_for('artwork_page', artwork_id=art.id) }}">{{ art.title }}</a>
+                  <span class="muted small admin-table__sub">
+                    #{{ art.id }} · {{ art.artist_name }} · {{ art.medium }}
+                  </span>
+                </td>
+                <td>
+                  {# The same derived status the public site uses. The admin
+                     does not get a separate definition of "sold". #}
+                  <span class="tag{% if art.status == 'sold' %} tag--sold{% endif %}">
+                    {{ {"for-sale": "For sale", "sold": "Sold",
+                        "not-for-sale": "Not for sale"}[art.status] }}
+                  </span>
+                </td>
+                {# Shown even when the work is not for sale. The public never
+                   sees this number; the gallery needs to. #}
+                <td class="admin-table__number price__amount">{{ art.price_cents | usd }}</td>
+                <td class="admin-table__number">{{ art.inventory_quantity }}</td>
+                <td>{{ "Yes" if art.is_featured else "—" }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">No artworks yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{#
+  The admin login.
+
+  Nothing on the public site links here. It is reached by typing /admin, or
+  by being redirected from a locked page -- in which case `next` holds where
+  they were going, carried through the form in a hidden field.
+#}
+
+{% block title %}Admin login — {{ gallery_name }}{% endblock %}
+
+{% block head %}
+  {# Ask search engines not to list this page. It is not a secret -- the URL
+     is guessable, and the password is the real protection -- but nobody
+     benefits from finding it in search results. #}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container admin-login">
+      <p class="eyebrow">Gallery staff</p>
+      <h1 class="display">Admin</h1>
+
+      {# One message for every failure, deliberately vague: see
+         admin_login_submit() in app.py. #}
+      {% if error %}
+        <p class="field__error admin-login__error" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form class="admin-login__form" method="post" action="{{ url_for('admin_login_submit') }}">
+        {# Where to go afterwards. safe_next() in app.py decides whether it
+           is honoured, so nothing here needs to be trusted. #}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div class="field">
+          <label for="username">Username</label>
+          {# autocomplete="username" and "current-password" tell password
+             managers exactly what each field is, so they fill them properly
+             instead of guessing. #}
+          <input type="text" id="username" name="username" value="{{ username }}"
+                 autocomplete="username" autocapitalize="none" spellcheck="false"
+                 required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          {# No value= here, ever. After a failed attempt the username comes
+             back pre-filled; the password is never sent back inside a page. #}
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" required>
+        </div>
+
+        <button class="button" type="submit">Log in</button>
+      </form>
+    </div>
+  </section>
+
+{% endblock %}
