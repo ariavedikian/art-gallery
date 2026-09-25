@@ -49,7 +49,8 @@
           <label for="filter-q">Search</label>
           {# value= keeps what was typed after the page reloads. #}
           <input type="search" id="filter-q" name="q" autocomplete="off"
-                 placeholder="Title, medium, artist" value="{{ filters.q }}">
+                 placeholder="Title, medium, artist" value="{{ filters.q }}"
+                 maxlength="{{ input_limits.q }}">
         </div>
 
         <div class="filters__field">

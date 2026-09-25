@@ -66,6 +66,13 @@ styling, cluttered layouts.
 - **The database is generated, never edited by hand.** `database/schema.sql`
   and `database/seed.sql` are the source of truth; rebuild the .db file with
   `python init_db.py --reset`. The .db file is gitignored.
+- **The schema has a version number.** `schema.sql` sets `PRAGMA user_version`;
+  `SCHEMA_VERSION` in app.py must match, and `get_db()` refuses any other
+  (once per file per process), naming `init_db.py --reset`. Any change to a
+  table, column or index: bump both. A stale file used to fail later as
+  "no such column: aw.alt_text" (Stage 20, the owner's own database, built
+  before Stage 19). Tests never see a stale file, since they build a fresh
+  one, which is why this check exists.
 - **One connection per request**, opened lazily by `get_db()` on Flask's `g`
   and closed by the `teardown_appcontext` handler. Never open a connection
   inside a loop or at import time.
@@ -278,7 +285,20 @@ styling, cluttered layouts.
 - **Jinja's `do` extension is not loaded.** Build lists in one expression
   instead of appending.
 - **Parameterised SQL only** (`WHERE id = ?`). Never f-string user input into
-  a query.
+  a query. `tests/test_input.py` parses app.py and fails on any database call
+  whose SQL is built by `+`, `%`, `.format()`, or an f-string piece not on its
+  reviewed `ALLOWED_IN_SQL` list. Adding a name there is a claim to check.
+- **Numbers from a request are ASCII digits.** `is_digits()` (`[0-9]+`), never
+  `str.isdigit()`, which is true for "²" (then `int()` crashes) and "٣"
+  (then `int()` reads 3). Patterns use `[0-9]`, not `\d`, for the same reason.
+  The test fails on any `.isdigit` in app.py.
+- **Every text field has a ceiling, written once in Python** (`TEXT_LIMITS`,
+  `CHECKOUT_LIMITS`, `MAX_SEARCH_LENGTH`, `MAX_USERNAME_LENGTH`). Templates
+  read them through `input_limits` for `maxlength=`: a convenience; the
+  server's check is the one that counts. Search text is cut, not refused
+  (the box shows what was searched); SQLite errors on a LIKE pattern over
+  50,000 bytes. No maximum password length, on purpose. Werkzeug's own
+  `MAX_FORM_MEMORY_SIZE` (500KB a field) is the backstop behind ours.
 - Prices are stored as **integer cents**, never floats (added Stage 5).
 - The data model must support both one-of-a-kind originals and multi-copy
   editions.
@@ -383,6 +403,49 @@ styling, cluttered layouts.
   table on every parent DELETE. Queries per page are 1-5 and must not grow
   with the collection; `tests/test_performance.py` adds 30 works and checks.
 
+## Open items (as of 2026-09-24, HEAD 928bbef)
+
+**Waiting on the owner:**
+
+- An answer to the question left open since Stage 16: the admin edit form
+  guards stock against lost updates but not price -- if two admins save the
+  same work at once, one changing the price and the other the title, what
+  happens, and why is stock treated differently? Let the owner answer; do not
+  answer it for them. (Stage 17 also guards `image`, for a separate reason:
+  replacing an image deletes the old files.)
+- `/about` still returns the bare string `"Placeholder gallery description."`
+  from Stage 1 -- no template, no nav. Owner to choose: a placeholder page
+  now, or leave it for Stage 21 with the real text.
+- Five stray upload files from Stage 17 testing may still be in
+  `static/images/artworks/`; `flask --app app sweep-uploads --delete`
+  removes them (owner to run).
+
+**Known gaps, deliberately deferred:**
+
+- Artist portraits' width/height (800x1000) are typed into `index.html` and
+  `artist.html`; a real portrait at Stage 21 needs a template change unless
+  they move into the `artists` table first.
+- The API does not expose alt text (its contract was left unchanged).
+- There are no migrations: any schema change needs `python init_db.py
+  --reset`, which empties the admins and orders tables. Since Stage 20 a
+  stale file is at least refused by name (schema version check).
+
+**Going into Stage 20 (security), already known:**
+
+- No CSRF tokens yet; only `SameSite=Lax`. POST forms live in base.html
+  (logout), artwork.html and cart.html (cart), checkout.html, and the admin
+  templates (login, artwork form, delete, ship); `/api/cart` takes JSON
+  via fetch().
+- No security headers at all (no CSP, `X-Content-Type-Options`,
+  `frame-ancestors`/`X-Frame-Options`, `Referrer-Policy`).
+- There are no inline `<script>` blocks and no `style=` attributes, so a
+  strict CSP needs no `'unsafe-inline'`. `innerHTML` is used 5 times in
+  static/js (the lightbox's server-rendered price line) -- worth reviewing.
+- `SECRET_KEY` falls back to a fixed dev string; the session cookie is not
+  `Secure` (development runs on plain http); login has no rate limit.
+- Uploads are served by extension from static/ (the extension comes from
+  the decoded format, never the upload's name).
+
 ## Deferred: Stage 14 (real payments)
 
 Stage 14 was skipped and still has to be done. Nothing from it is in the code
@@ -452,6 +515,7 @@ python tests/test_navigation.py
 python tests/test_layout.py
 python tests/test_accessibility.py
 python tests/test_performance.py
+python tests/test_input.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -596,8 +660,24 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       Found, not in scope: artist portraits' width/height are still typed
       into two templates (800x1000), so a real portrait at Stage 21 would
       need a template change; the API does not expose alt text.
-- [ ] **20 — Security basics.** Input validation, SQL injection, output
+- [~] **20 — Security basics.** Input validation, SQL injection, output
       escaping, sessions, CSRF, protecting admin, payment architecture.
+      Audited first by attacking a throwaway copy (11 findings; the worst: a
+      cookie signed with the committed fallback key opens /admin). Split in
+      five.
+      **Part 1 (done):** ASCII-only numbers (`is_digits`; "²" was a 500),
+      length limits on checkout and login, search cut to 100 characters (a
+      60KB search was a public 500), `tests/test_input.py` (numbers, lengths,
+      injection strings, and a parse of every query in app.py). Plus a
+      schema version check, after the owner's database (built before Stage
+      19) failed with "no such column".
+      **Part 2:** output escaping test, lightbox without `innerHTML`, security
+      headers (CSP, nosniff, frame-ancestors, Referrer-Policy).
+      **Part 3:** sessions: no public fallback key, production cookie
+      settings, admin sessions that expire and can be revoked.
+      **Part 4:** CSRF tokens on every POST and on `/api/cart`.
+      **Part 5:** login throttling, trusted hosts, the mock payment off
+      outside development, payment security design for Stage 14.
 - [ ] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean
       Carzou. Verified sources only. Architecture should not change.
 - [ ] **22 — Final refactor.** Duplication, naming, dead code, query

@@ -55,11 +55,12 @@ def build(reset=False):
         # cheap way to prove the tables exist after a rebuild.
         orders = connection.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
         admins = connection.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
     finally:
         # Always close, even if something above raised an error.
         connection.close()
 
-    print(f"Created {DB_PATH}")
+    print(f"Created {DB_PATH} (schema version {version})")
     print(f"  {artists} artists, {artworks} artworks (placeholder content)")
     print(f"  {orders} orders")
     print(f"  {admins} admins")

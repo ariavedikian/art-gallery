@@ -86,6 +86,32 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 # Built from database/schema.sql + seed.sql by: python init_db.py --reset
 DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
 
+# The schema this code was written against: the PRAGMA user_version that
+# schema.sql writes into the file. The two change together.
+SCHEMA_VERSION = 1
+
+# Database files already found to be the right version, so the check costs
+# one statement per file per process rather than one per request.
+_checked_databases = set()
+
+
+def check_schema_version(db):
+    """Refuse a database built from an older (or newer) schema.sql.
+
+    The .db file is made from schema.sql ONCE. When schema.sql later gains a
+    column, the file does not: the site then fails on whichever query first
+    names the new column, with "no such column" and nothing about why. This
+    turns that into one clear message at the first query, with the fix in it.
+    """
+    found = db.execute("PRAGMA user_version").fetchone()[0]
+    if found != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"The database at {DATABASE_PATH} was built from a different "
+            f"schema.sql (version {found}; this code needs {SCHEMA_VERSION}). "
+            f"Rebuild it with: python init_db.py --reset "
+            f"(this empties the admins and orders tables)."
+        )
+
 
 # --- Database plumbing -------------------------------------------------------
 
@@ -122,6 +148,10 @@ def get_db():
 
         # SQLite ignores foreign keys unless asked, on EVERY connection.
         g.db.execute("PRAGMA foreign_keys = ON")
+
+        if DATABASE_PATH not in _checked_databases:
+            check_schema_version(g.db)
+            _checked_databases.add(DATABASE_PATH)
 
     return g.db
 
@@ -192,6 +222,10 @@ PRICE_RANGES = {
     "100000-300000": (100000, 300000),
     "300000-": (300000, None),
 }
+
+# The longest search that is run. Far longer than any title, and far below
+# the 50,000-byte limit SQLite puts on a LIKE pattern (see filters_from).
+MAX_SEARCH_LENGTH = 100
 
 
 # One column list for both artist queries, with the portrait's alt text
@@ -467,7 +501,7 @@ def get_cart_lines():
     if not cart:
         return []
 
-    ids = [int(key) for key in cart if key.isdigit()]
+    ids = [int(key) for key in cart if is_digits(key)]
     by_id = {row["id"]: row for row in get_artworks_by_ids(ids)}
 
     lines = []
@@ -475,7 +509,7 @@ def get_cart_lines():
     # dicts keep insertion order, and the JSON round-trip through the cookie
     # preserves it, so the cart reads in the order things were added to it.
     for key, quantity in cart.items():
-        artwork = by_id.get(int(key)) if key.isdigit() else None
+        artwork = by_id.get(int(key)) if is_digits(key) else None
 
         # The work no longer exists. There is nothing to show and nothing to
         # price, so the line just disappears.
@@ -706,6 +740,14 @@ class PaymentDeclined(Exception):
     """Raised when the mock payment step is told to decline."""
 
 
+# The longest each checkout field may be. Without a limit, whatever a POST
+# carries is stored and shown back on every visit to the order page -- up to
+# Werkzeug's own ceiling of 500KB a field. 254 is the longest address email
+# can actually deliver to (RFC 5321); the others are generous for real use.
+CHECKOUT_LIMITS = {"customer_name": 120, "customer_email": 254,
+                   "shipping_address": 500}
+
+
 def validate_checkout(form):
     """Check the submitted details. Returns (values, errors).
 
@@ -727,8 +769,6 @@ def validate_checkout(form):
 
     if not values["customer_name"]:
         errors["customer_name"] = "Please give a name for the order."
-    elif len(values["customer_name"]) > 120:
-        errors["customer_name"] = "That name is too long."
 
     email = values["customer_email"]
     if not email:
@@ -743,6 +783,12 @@ def validate_checkout(form):
 
     if not values["shipping_address"]:
         errors["shipping_address"] = "Please give a delivery address."
+
+    # Last, so a length problem replaces any other message for that field:
+    # a 300-character "email" is too long before it is anything else.
+    for name, limit in CHECKOUT_LIMITS.items():
+        if len(values[name]) > limit:
+            errors[name] = f"Keep this under {limit} characters."
 
     return values, errors
 
@@ -883,6 +929,12 @@ ADMIN_KEY = "admin_id"
 # symbols and capitals, which mostly produce "Password1!". Twelve characters
 # is a sensible floor; a passphrase of four ordinary words clears it easily.
 MIN_PASSWORD_LENGTH = 12
+
+# The longest username an admin may have. create-admin refuses longer, so at
+# login a longer one cannot belong to anybody and is never looked up. There is
+# no MAXIMUM password length on purpose: a long passphrase is a good one, and
+# the hash reduces any length to a fixed size before the slow part begins.
+MAX_USERNAME_LENGTH = 64
 
 
 def get_admin_by_username(username):
@@ -1085,7 +1137,21 @@ TEXT_LIMITS = {"title": 200, "year": 40, "medium": 120, "category": 60,
 # Digits, optionally followed by a point and one or two more digits. Checked
 # BEFORE converting, so "1e5", "12.345" and "-5" are refused rather than
 # quietly turned into something the admin did not mean.
-_PRICE_PATTERN = re.compile(r"\d+(\.\d{1,2})?")
+#
+# [0-9], not \d. In Python, \d means any Unicode digit, so it matches the
+# Arabic-Indic "٣" and dozens of others, and Decimal would happily read them.
+# A price is typed on a keyboard in ASCII; anything else is refused.
+_PRICE_PATTERN = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
+
+# The same rule for whole numbers. str.isdigit() is NOT this test: it is true
+# for "²" (superscript two), which int() then refuses with a crash, and for
+# "٣", which int() quietly reads as 3. A number from a form is 0-9 or nothing.
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def is_digits(text):
+    """True if text is one or more ASCII digits, and nothing else."""
+    return _DIGITS.fullmatch(text) is not None
 
 # The columns the CMS writes, in one list shared by INSERT and UPDATE so the
 # two can never disagree. These are names WE wrote, so building the SQL from
@@ -1420,7 +1486,7 @@ def price_for_input(cents):
 def parse_whole_number(text, low, high):
     """The int in text if it is a whole number from low to high, else None."""
     text = text.strip()
-    if not text.isdigit():
+    if not is_digits(text):
         return None
     number = int(text)
     return number if low <= number <= high else None
@@ -1499,7 +1565,7 @@ def validate_artwork(form, files, current_image=None):
     # Nothing from the form is trusted because the menu only offered good
     # options: a POST can be written by hand with any value at all.
     artist_ids = {artist["id"] for artist in get_artists()}
-    artist_id = int(values["artist_id"]) if values["artist_id"].isdigit() else None
+    artist_id = int(values["artist_id"]) if is_digits(values["artist_id"]) else None
     if artist_id not in artist_ids:
         errors["artist_id"] = "Choose an artist."
 
@@ -1711,6 +1777,12 @@ def inject_site_globals():
         # same limit the server does.
         "max_per_line": MAX_PER_LINE,
 
+        # The same idea for text: the maxlength= on a field is the server's
+        # own limit, read from here, so the two cannot drift apart. The
+        # browser's copy is a convenience; the server's is the check.
+        "input_limits": {"q": MAX_SEARCH_LENGTH, "username": MAX_USERNAME_LENGTH,
+                         **CHECKOUT_LIMITS},
+
         # The Orders link is hidden until this browser has placed one. An
         # empty page nobody can fill is worse than no link.
         "remembered_orders": len(get_remembered_orders()),
@@ -1770,9 +1842,15 @@ def filters_from(args):
 
     Used by the All works page AND by /api/artworks, so both understand
     exactly the same filters. search_artworks() then validates the values.
+
+    The search text is cut to MAX_SEARCH_LENGTH. SQLite refuses a LIKE
+    pattern over 50,000 bytes with an error, so without the cut anyone could
+    turn this page into a 500 by making the URL long. Cut rather than
+    refused, because the box shows the text back: the visitor sees exactly
+    what was searched for.
     """
     return {
-        "q": args.get("q", "").strip(),
+        "q": args.get("q", "").strip()[:MAX_SEARCH_LENGTH],
         "artist": args.get("artist", ""),
         "category": args.get("category", ""),
         "status": args.get("status", ""),
@@ -2195,7 +2273,13 @@ def admin_login_submit():
     password = request.form.get("password", "")
     next_url = request.form.get("next", "")
 
-    admin = get_admin_by_username(username) if username else None
+    # Too long to be anyone is treated exactly like "no such user": the dummy
+    # hash below still runs, and the same message comes back. Only the cut
+    # username is echoed into the page, never the whole of what was sent.
+    if len(username) > MAX_USERNAME_LENGTH:
+        username, admin = username[:MAX_USERNAME_LENGTH], None
+    else:
+        admin = get_admin_by_username(username) if username else None
 
     # check_password_hash hashes what was typed the same way, with the same
     # salt, and compares. It also compares in constant time, so how long the
@@ -2562,6 +2646,8 @@ def create_admin_command(username):
     username = username.strip()
     if not username:
         raise click.BadParameter("the username cannot be blank")
+    if len(username) > MAX_USERNAME_LENGTH:
+        raise click.BadParameter(f"keep it to {MAX_USERNAME_LENGTH} characters")
 
     existing = get_admin_by_username(username)
     if existing is not None and not click.confirm(

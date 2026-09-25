@@ -17,6 +17,14 @@
 -- Leaving this off is a classic source of quietly broken data.
 PRAGMA foreign_keys = ON;
 
+-- The version of this file's SHAPE, stored in the database file's header.
+-- A .db file is built from this file once, and does not change when this
+-- file does; app.py compares this number with its SCHEMA_VERSION and refuses
+-- to run against an older build, naming the fix, rather than failing later
+-- with "no such column". Any change to a table, column or index here: add 1,
+-- and change SCHEMA_VERSION in app.py to match.
+PRAGMA user_version = 1;
+
 
 -- Drop in reverse order of dependency: artworks points at artists, so it has
 -- to go first. Dropping artists while artworks still referenced it would be
