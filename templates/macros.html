@@ -79,6 +79,8 @@
 
   Extra attributes (loading, fetchpriority) go through kwargs | xmlattr, as
   in form_field. A placeholder SVG gets no srcset, so `sizes` is left off too.
+  The alt text is art.alt, worked out in SQL (_ALT_CASE in app.py): the
+  work's own description, or "<title> by <artist>" until one is written.
   alt="" is for an image its caption already describes (the admin form).
 #}
 {% macro artwork_image(art, slot, alt=none) %}
@@ -91,7 +93,7 @@
   {% set candidates = art | srcset %}
   <img src="{{ url_for('static', filename='images/' ~ art.image) }}"
        {%- if candidates %} srcset="{{ candidates }}" sizes="{{ sizes }}"{% endif %}
-       alt="{{ alt if alt is not none else 'Placeholder image of ' ~ art.title ~ ' by ' ~ art.artist_name }}"
+       alt="{{ alt if alt is not none else art.alt }}"
        width="{{ art.image_width }}" height="{{ art.image_height }}"
        {{ kwargs | xmlattr }}>
 {% endmacro %}

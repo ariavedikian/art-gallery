@@ -18,8 +18,8 @@
       <figure class="hero__figure">
         {# Visible the instant the page opens, so it must NOT be lazy-loaded.
            fetchpriority asks the browser to fetch it before other images. #}
-        <img src="{{ url_for('static', filename='images/placeholders/hero.svg') }}"
-             alt="Placeholder hero image" width="1600" height="900"
+        <img src="{{ url_for('static', filename='images/' ~ hero.image) }}"
+             alt="{{ hero.alt }}" width="{{ hero.width }}" height="{{ hero.height }}"
              fetchpriority="high">
       </figure>
     </div>
@@ -54,7 +54,7 @@
           <a class="feature__media" href="{{ collection_url }}"
              tabindex="-1" aria-hidden="true">
             <img src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
-                 alt="Placeholder portrait of {{ artist.name }}"
+                 alt="{{ artist.portrait_alt }}"
                  width="800" height="1000" loading="lazy">
           </a>
 

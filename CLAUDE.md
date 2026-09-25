@@ -338,6 +338,22 @@ styling, cluttered layouts.
   files named the way this site names them, that no row uses, and that are
   older than `SWEEP_MIN_AGE_SECONDS` -- a younger file may belong to a save
   whose row has not been written yet.
+- **Alt text is data, never template wording.** `artworks.alt_text` (written
+  in the admin form, optional) and `artists.portrait_alt`; the homepage hero
+  is the `HERO` dict beside `GALLERY_NAME`. SQL derives the fallback once
+  (`_ALT_CASE`: "<title> by <artist>"; "Portrait of <name>"), so a blank is
+  stored as NULL and never rendered as `alt=""`, which would tell a screen
+  reader to skip the art. The word "Placeholder" lives in seed.sql, where
+  the images really are placeholders; `tests/test_accessibility.py` fails if
+  a template or script writes it.
+- **The lightbox copies alt text from the card**, like the price line. It
+  never rebuilds it.
+- **Structure is tested without a browser.** `tests/test_accessibility.py`
+  parses every page: one `<h1>`, no skipped heading levels, alt on every
+  image (`alt=""` only for the lightbox and the captioned admin thumbnail),
+  every control labelled, unique ids, ARIA references that resolve.
+  Contrast and focus are audited in a browser (all text passes AA; the
+  lowest pair, `--ink-soft` on `--paper-warm`, is 5.06:1).
 - **Artworks are never cropped.** Show them with `object-fit: contain` inside
   a `.mat`. Photographs of people (artist portraits) may use `cover`.
 - **Artwork titles are italic** (`.work-title`), the art-writing convention.
@@ -415,6 +431,7 @@ python tests/test_uploads.py
 python tests/test_cleanup.py
 python tests/test_navigation.py
 python tests/test_layout.py
+python tests/test_accessibility.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -542,8 +559,20 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       800px block moved to 50em. Re-audited: no page overflows at any
       width. `tests/test_layout.py` pins the invisible one-line fixes.
       Found, not in scope: `/about` still returns bare text from Stage 1.
-- [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
-      navigation, contrast, query efficiency.
+- [~] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
+      navigation, contrast, query efficiency. Audited first (15 pages):
+      structure, labels, ids, ARIA and contrast all passed already; queries
+      1-5 per page with no per-row loops. Split in two.
+      **Part 1 (done):** alt text as data (`alt_text`, `portrait_alt`,
+      `HERO`, SQL fallback, admin field), the lightbox copying it, a focus
+      style for the admin checkboxes, `tests/test_accessibility.py`.
+      **Part 2:** static files re-validated on every page (`no-cache`):
+      versioned URLs and long caching; self-hosted fonts (approved);
+      an index on `order_items.artwork_id` (deletes scan it); the first
+      gallery row and cart lines are lazy but visible.
+      Found, not in scope: artist portraits' width/height are still typed
+      into two templates (800x1000), so a real portrait at Stage 21 would
+      need a template change; the API does not expose alt text.
 - [ ] **20 — Security basics.** Input validation, SQL injection, output
       escaping, sessions, CSRF, protecting admin, payment architecture.
 - [ ] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean

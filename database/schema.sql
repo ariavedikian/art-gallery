@@ -48,7 +48,13 @@ CREATE TABLE artists (
 
     summary   TEXT NOT NULL,
     bio       TEXT NOT NULL,
-    portrait  TEXT NOT NULL      -- path under static/images/
+    portrait  TEXT NOT NULL,     -- path under static/images/
+
+    -- What the portrait shows, for someone who cannot see it: the image's
+    -- alt text. Data, not template wording, so replacing a placeholder with
+    -- a real photograph (Stage 21) changes rows, never templates. NULL means
+    -- not written yet; the site then says "Portrait of <name>".
+    portrait_alt TEXT
 );
 
 
@@ -100,6 +106,13 @@ CREATE TABLE artworks (
     image         TEXT NOT NULL,      -- path under static/images/
     image_width   INTEGER NOT NULL,   -- real pixel size, so the browser can
     image_height  INTEGER NOT NULL,   -- reserve space before the file loads
+
+    -- The image's alt text: what the picture shows, for a screen-reader user
+    -- or anyone whose images did not load. Optional: NULL means nobody has
+    -- written one yet, and the site falls back to "<title> by <artist>"
+    -- (see _ARTWORK_COLUMNS in app.py). A description is better; the
+    -- fallback at least names the work.
+    alt_text      TEXT,
 
     -- Curated ordering: lower numbers appear first, and the lowest-numbered
     -- featured work becomes the homepage spotlight. Without this, the gallery

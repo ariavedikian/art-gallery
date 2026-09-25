@@ -75,7 +75,8 @@ a { color: inherit; }
    Never remove focus outlines without replacing them. */
 a:focus-visible,
 .button:focus-visible,
-.menu-toggle:focus-visible {
+.menu-toggle:focus-visible,
+.admin-form__check input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }

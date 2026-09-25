@@ -29,7 +29,7 @@
       <div class="feature">
         <figure class="feature__media">
           <img src="{{ url_for('static', filename='images/' ~ artist.portrait) }}"
-               alt="Placeholder portrait of {{ artist.name }}"
+               alt="{{ artist.portrait_alt }}"
                width="800" height="1000" fetchpriority="high">
         </figure>
 

@@ -170,6 +170,16 @@
               before it loads.</p>
           </div>
 
+          {# Alt text: read aloud in place of the image by a screen reader, and
+             shown if the image fails to load. Describe what is SEEN -- the
+             subject, the composition, the dominant colours -- not facts the
+             caption already gives, and not "image of". #}
+          {{ form_field("alt_text", "Image description (alt text)", values.alt_text, errors,
+                        type="textarea", maxlength=300,
+                        hint="Optional. What the image shows, for someone who cannot see it: "
+                             "e.g. \u201cA woman in a red shawl at a window, in muted blues.\u201d "
+                             "Left blank, the site uses the title and artist.") }}
+
           {{ form_field("display_order", "Running order", values.display_order, errors,
                         hint="Lower numbers hang first. Leave gaps (10, 20, 30…) so a work can be slotted in between.",
                         inputmode="numeric") }}

@@ -76,7 +76,10 @@
         image: card.dataset.image,
         srcset: card.dataset.srcset,
         href: card.dataset.href,
-        priceHtml: card.querySelector(".price").innerHTML
+        priceHtml: card.querySelector(".price").innerHTML,
+        // Copied from the card's own <img>, for the same reason as the price:
+        // the alt text is decided once, on the server, not rebuilt here.
+        alt: card.querySelector("img").alt
       };
     });
   }
@@ -102,7 +105,7 @@
     // assignment would leave the previous work's list in place.
     view.image.srcset = work.srcset;
     view.image.src = work.image;
-    view.image.alt = "Placeholder image of " + work.title + " by " + work.artist;
+    view.image.alt = work.alt;
     view.title.textContent = work.title;
     view.meta.textContent = work.artist + ", " + work.year + " · " + work.medium;
     view.description.textContent = work.description;

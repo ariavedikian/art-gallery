@@ -48,6 +48,16 @@ app = Flask(__name__)
 
 GALLERY_NAME = "Gallery Placeholder"
 
+# The homepage's opening image. Kept here, beside the gallery's name, rather
+# than written into index.html, so that at Stage 21 replacing it -- file, size
+# and alt text -- is a change to data, and the template stays as it is.
+HERO = {
+    "image": "placeholders/hero.svg",
+    "width": 1600,
+    "height": 900,
+    "alt": "Placeholder hero image",
+}
+
 # The key Flask uses to SIGN the session cookie. Signing is not encryption:
 # the visitor can read what is in their cookie, they simply cannot change it
 # without the signature failing and Flask throwing the whole cookie away.
@@ -159,12 +169,18 @@ _STATUS_CASE = """
     END
 """
 
+# An image's alt text: the one written for it, or, until someone writes one,
+# "<title> by <artist>". Worked out here, once, so every <img> on the site
+# and the lightbox (which copies it from the card) say the same thing.
+_ALT_CASE = "COALESCE(aw.alt_text, aw.title || ' by ' || ar.name)"
+
 _ARTWORK_COLUMNS = f"""
     aw.id, aw.title, aw.year, aw.medium, aw.category, aw.description,
     aw.price_cents, aw.available_for_purchase, aw.inventory_quantity,
     aw.is_featured, aw.image, aw.image_width, aw.image_height,
     ar.name AS artist_name, ar.slug AS artist_slug,
-    {_STATUS_CASE} AS status
+    {_STATUS_CASE} AS status,
+    {_ALT_CASE} AS alt
 """
 
 # The price menu sends values like "100000-300000" or "300000-": cents, low to
@@ -177,6 +193,14 @@ PRICE_RANGES = {
 }
 
 
+# One column list for both artist queries, with the portrait's alt text
+# derived the same way as an artwork's.
+_ARTIST_COLUMNS = """
+    id, slug, name, lifespan, summary, bio, portrait,
+    COALESCE(portrait_alt, 'Portrait of ' || name) AS portrait_alt
+"""
+
+
 def get_artists():
     """All artists, fetched at most once per request.
 
@@ -186,10 +210,7 @@ def get_artists():
     between requests or leak between visitors.
     """
     if "artists" not in g:
-        g.artists = query_db(
-            "SELECT id, slug, name, lifespan, summary, bio, portrait"
-            " FROM artists ORDER BY name"
-        )
+        g.artists = query_db(f"SELECT {_ARTIST_COLUMNS} FROM artists ORDER BY name")
     return g.artists
 
 
@@ -209,8 +230,7 @@ def get_artist(slug):
     SQL injection, and the ? is the entire defence against it.
     """
     return query_db(
-        "SELECT id, slug, name, lifespan, summary, bio, portrait"
-        " FROM artists WHERE slug = ?",
+        f"SELECT {_ARTIST_COLUMNS} FROM artists WHERE slug = ?",
         (slug,),
         one=True,
     )
@@ -1059,7 +1079,7 @@ _SVG_TAG = "{http://www.w3.org/2000/svg}svg"
 # The longest each text field may be. Not a database rule -- SQLite would store
 # a novel in a TEXT column -- but a sanity check on what reaches the page.
 TEXT_LIMITS = {"title": 200, "year": 40, "medium": 120, "category": 60,
-               "description": 4000}
+               "description": 4000, "alt_text": 300}
 
 # Digits, optionally followed by a point and one or two more digits. Checked
 # BEFORE converting, so "1e5", "12.345" and "-5" are refused rather than
@@ -1073,6 +1093,7 @@ _ARTWORK_WRITE_COLUMNS = (
     "artist_id", "title", "year", "medium", "category", "description",
     "price_cents", "available_for_purchase", "inventory_quantity",
     "is_featured", "image", "image_width", "image_height", "display_order",
+    "alt_text",
 )
 
 
@@ -1428,7 +1449,8 @@ def artwork_form_values(artwork=None):
         return {"artist_id": "", "title": "", "year": "", "medium": "",
                 "category": "", "description": "", "price": "",
                 "inventory_quantity": "1", "available_for_purchase": True,
-                "is_featured": False, "image": "", "display_order": "100"}
+                "is_featured": False, "image": "", "display_order": "100",
+                "alt_text": ""}
 
     return {
         "artist_id": str(artwork["artist_id"]),
@@ -1443,6 +1465,7 @@ def artwork_form_values(artwork=None):
         "is_featured": bool(artwork["is_featured"]),
         "image": artwork["image"],
         "display_order": str(artwork["display_order"]),
+        "alt_text": artwork["alt_text"] or "",
     }
 
 
@@ -1462,7 +1485,7 @@ def validate_artwork(form, files, current_image=None):
     """
     values = {name: form.get(name, "").strip() for name in (
         "artist_id", "title", "year", "medium", "category", "description",
-        "price", "inventory_quantity", "image", "display_order")}
+        "price", "inventory_quantity", "image", "display_order", "alt_text")}
 
     # An UNTICKED checkbox sends nothing at all -- not "off", not "0", just an
     # absent name. So "ticked" can only mean "the name is present".
@@ -1557,6 +1580,10 @@ def validate_artwork(form, files, current_image=None):
         "image_width": width,
         "image_height": height,
         "display_order": display_order,
+        # Blank means "not written yet" -- NULL, so the site uses its
+        # fallback -- rather than an empty alt="", which would tell a screen
+        # reader the image is decoration and skip it entirely.
+        "alt_text": values["alt_text"] or None,
         "upload": upload,
     }
     return values, {}, record
@@ -1708,6 +1735,7 @@ def home():
 
     return render_template(
         "index.html",
+        hero=HERO,
         artists=get_artists(),
         spotlight=spotlight,
         featured=featured[1:],
