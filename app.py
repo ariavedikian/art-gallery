@@ -2531,6 +2531,56 @@ def no_store_for_admin(response):
     return response
 
 
+# --- Security headers --------------------------------------------------------
+# Escaping is the defence against cross-site scripting: Jinja turns < into
+# &lt; in every {{ }}, so text from the database is shown, never run. These
+# headers are the second line, for the day an escaping mistake gets through.
+#
+# Content-Security-Policy tells the browser where this page may load things
+# from. Everything here comes from this site ('self'), and none of it is
+# inline: no <script> blocks, no style= attributes, no onclick=. So the policy
+# can forbid inline code outright -- and then a <script> that sneaks into a
+# page through a bug is simply not run.
+
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",       # anything not listed below: this site only
+    "script-src 'self'",        # our .js files; no inline scripts, no eval
+    "style-src 'self'",         # style.css; no style= attributes
+    "img-src 'self'",
+    "font-src 'self'",          # self-hosted since Stage 19
+    "connect-src 'self'",       # fetch() to /api/cart
+    "object-src 'none'",        # no plugins, ever
+    "base-uri 'self'",          # an injected <base> cannot redirect our links
+    "form-action 'self'",       # forms post only here (Stage 14: add Stripe)
+    # Who may show our pages inside a frame. 'self', not 'none': the layout
+    # audits frame our own pages at fixed widths. Another site framing the
+    # admin under a decoy button ("clickjacking") is what this stops.
+    "frame-ancestors 'self'",
+])
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    # The same framing rule for browsers too old to read frame-ancestors.
+    "X-Frame-Options": "SAMEORIGIN",
+    # Use the Content-Type we send; never guess from the bytes. Without it a
+    # browser may decide a file "looks like" HTML or script and run it.
+    "X-Content-Type-Options": "nosniff",
+    # A link followed from here tells other sites nothing about where it was
+    # clicked. An order page's URL IS its key (/order/<reference>), and by
+    # default it would travel in the Referer header to any site it links to.
+    "Referrer-Policy": "same-origin",
+}
+
+
+@app.after_request
+def security_headers(response):
+    """Send SECURITY_HEADERS with every response: pages, JSON, static files,
+    and error pages, which go through after_request too."""
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 # --- Caching static files -----------------------------------------------------
 #
 # Left to Flask, every static file is sent with Cache-Control: no-cache. That

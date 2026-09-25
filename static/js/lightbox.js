@@ -76,7 +76,7 @@
         image: card.dataset.image,
         srcset: card.dataset.srcset,
         href: card.dataset.href,
-        priceHtml: card.querySelector(".price").innerHTML,
+        price: card.querySelector(".price"),
         // Copied from the card's own <img>, for the same reason as the price:
         // the alt text is decided once, on the server, not rebuilt here.
         alt: card.querySelector("img").alt
@@ -112,10 +112,13 @@
     view.link.href = work.href;
     view.count.textContent = (index + 1) + " of " + works.length;
 
-    // textContent sets text; innerHTML sets markup. The price line is markup
-    // we generated ourselves, so it is safe here. Never put text that came
-    // from a visitor into innerHTML — that is how cross-site scripting works.
-    view.price.innerHTML = work.priceHtml;
+    // The price line is ELEMENTS (spans with classes), so textContent would
+    // lose them. It used to be copied as an HTML string through innerHTML,
+    // which turns text back into markup -- safe only as long as nothing in
+    // that string ever came from a person. Copying the nodes themselves
+    // never parses anything: what was text on the card stays text here.
+    // cloneNode(true) copies the card's line, leaving the card's own intact.
+    view.price.replaceChildren(...work.price.cloneNode(true).childNodes);
   }
 
   function open(card) {

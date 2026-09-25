@@ -367,7 +367,25 @@ styling, cluttered layouts.
   the images really are placeholders; `tests/test_accessibility.py` fails if
   a template or script writes it.
 - **The lightbox copies alt text from the card**, like the price line. It
-  never rebuilds it.
+  never rebuilds it. The price line is copied as NODES
+  (`replaceChildren(...cloneNode(true).childNodes)`), never through
+  `innerHTML`: nothing is parsed, so what was text stays text.
+- **Escaping is the defence; headers are the second line.** Jinja escapes
+  every `{{ }}` in .html templates, and every attribute is double-quoted.
+  Never `|safe`, `Markup()` or `autoescape false`, and no script assigns
+  `innerHTML`/`outerHTML` or calls `insertAdjacentHTML`, `document.write`,
+  `eval`: `tests/test_output.py` fails on any of them, and parses every page
+  with a probe (`"'></title></textarea><x-probe ...>`) in every field.
+- **Every response gets `SECURITY_HEADERS`** (one `after_request`): a strict
+  CSP (`'self'` only, no `'unsafe-inline'`), `nosniff`, framing limited to
+  this site (`frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`; 'self'
+  rather than 'none' because the layout audits frame our own pages), and
+  `Referrer-Policy: same-origin` (an order URL is its own key). So: no
+  inline `<script>`, `<style>`, `style=` or `on...=` anywhere, and no
+  `data:` or outside URLs in style.css; the test checks every page. Stage 14
+  must add Stripe's checkout host to `form-action` (and whatever else its
+  docs require). The test client does not enforce CSP: after changing it,
+  check in a browser (violations appear as console errors).
 - **Structure is tested without a browser.** `tests/test_accessibility.py`
   parses every page: one `<h1>`, no skipped heading levels, alt on every
   image (`alt=""` only for the lightbox and the captioned admin thumbnail),
@@ -436,11 +454,6 @@ styling, cluttered layouts.
   (logout), artwork.html and cart.html (cart), checkout.html, and the admin
   templates (login, artwork form, delete, ship); `/api/cart` takes JSON
   via fetch().
-- No security headers at all (no CSP, `X-Content-Type-Options`,
-  `frame-ancestors`/`X-Frame-Options`, `Referrer-Policy`).
-- There are no inline `<script>` blocks and no `style=` attributes, so a
-  strict CSP needs no `'unsafe-inline'`. `innerHTML` is used 5 times in
-  static/js (the lightbox's server-rendered price line) -- worth reviewing.
 - `SECRET_KEY` falls back to a fixed dev string; the session cookie is not
   `Secure` (development runs on plain http); login has no rate limit.
 - Uploads are served by extension from static/ (the extension comes from
@@ -516,6 +529,7 @@ python tests/test_layout.py
 python tests/test_accessibility.py
 python tests/test_performance.py
 python tests/test_input.py
+python tests/test_output.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -671,8 +685,13 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       injection strings, and a parse of every query in app.py). Plus a
       schema version check, after the owner's database (built before Stage
       19) failed with "no such column".
-      **Part 2:** output escaping test, lightbox without `innerHTML`, security
-      headers (CSP, nosniff, frame-ancestors, Referrer-Policy).
+      **Part 2 (done):** `tests/test_output.py` (a breakout probe in every
+      field, 17 pages parsed; escape hatches; headers on every kind of
+      response; nothing inline), the lightbox copying nodes instead of
+      `innerHTML`, and `SECURITY_HEADERS`. Checked in a browser: no CSP
+      violations on any page, lightbox and fetch() still work, an injected
+      inline script/handler/style is refused, and a page on another port
+      cannot frame /admin.
       **Part 3:** sessions: no public fallback key, production cookie
       settings, admin sessions that expire and can be revoked.
       **Part 4:** CSRF tokens on every POST and on `/api/cart`.
