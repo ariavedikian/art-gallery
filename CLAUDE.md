@@ -90,9 +90,27 @@ styling, cluttered layouts.
   content stops fitting, not at a list of device sizes: the header's 64em
   is where the wordmark and nav (about 965px, measured) no longer fit one
   row. em, so a reader who enlarges their text gets the narrow layout
-  sooner. Written as range syntax, `@media (width < 64em)`. If the gallery
-  name or artist names grow at Stage 21, re-measure. (The older 800px block
-  in section 22 is still px; Stage 18 part 2 revisits it.)
+  sooner. Written as range syntax, `@media (width < 64em)`; the one-column
+  layout is `(width < 50em)`. If the gallery name or artist names grow at
+  Stage 21, re-measure. `tests/test_layout.py` fails on a px breakpoint.
+- **Measure layout, don't eyeball it.** Before and after layout work, load
+  every page into fixed-width iframes (320-1440px) and measure page
+  overflow, element sizes and tap targets; `sandbox` without
+  `allow-scripts` shows the JavaScript-off version. Elements inside a
+  scrolling box do not count as overflowing the page.
+- **Targets are at least 24px** (WCAG 2.2, 2.5.8), by padding rather than
+  bigger text; 44px for the phone header's buttons. Links inside running
+  content, with clear space around them, meet it by spacing and are left
+  alone. No text below 0.6875rem (11px); `test_layout.py` enforces it.
+- **A scrolling box that holds `.visually-hidden` text is positioned.** That
+  text is `position: absolute`, and it belongs to its nearest POSITIONED
+  ancestor: without `position: relative` on `.admin-table-wrap` it escaped
+  the scroll and stretched the page to 557px at 320px wide.
+- **Fieldsets get `min-inline-size: 0`.** Browsers default it to
+  `min-content`, so a fieldset can never be narrower than its widest
+  child (a long select option), and pushes the page sideways on a phone.
+- **Admin tables scroll sideways on a phone, first column pinned**
+  (`position: sticky`). Cards would lose comparing down a column.
 - **The phone menu is switched on by its script.** `static/js/nav.js` adds
   `site-header--menu` to the header; only then does the CSS show the Menu
   button and fold the links away. With JavaScript off, or if the script
@@ -396,6 +414,7 @@ python tests/test_images.py
 python tests/test_uploads.py
 python tests/test_cleanup.py
 python tests/test_navigation.py
+python tests/test_layout.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -510,16 +529,18 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       after the row change saves (row first, then files), only when no row
       uses them; the image joins stock in the UPDATE guard; `DELETE ...
       RETURNING`; `flask sweep-uploads` for strays, looking before deleting.
-- [~] **18 — Responsive polish.** Media queries, responsive type and grids,
+- [x] **18 — Responsive polish.** Media queries, responsive type and grids,
       mobile navigation, tested across breakpoints. Split in two, after a
       measured audit of every page at 320-1440px.
       **Part 1 (done):** the phone menu (Menu button + visible cart, switched
       on by nav.js, links visible without JS), a content-derived 64em
       breakpoint that also closed a two-row header gap at 800-1000px.
-      **Part 2:** what the audit found elsewhere: admin tables (+237px) and
-      the artwork form (+87px) overflowing at 320px, breadcrumbs (15px) and
-      admin checkboxes (18px) under the 24px target size, 10px tags, the
-      admin bar wrapping, and the 800px block moved to em.
+      **Part 2 (done):** the admin pages' overflow at 320px, traced to its
+      causes (visually-hidden text escaping an unpositioned scroll box; the
+      fieldset min-content default), a pinned first table column, 24px
+      breadcrumbs, admin checkboxes and admin bar, 11px minimum text, the
+      800px block moved to 50em. Re-audited: no page overflows at any
+      width. `tests/test_layout.py` pins the invisible one-line fixes.
       Found, not in scope: `/about` still returns bare text from Stage 1.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
       navigation, contrast, query efficiency.
