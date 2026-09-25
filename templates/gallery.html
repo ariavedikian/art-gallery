@@ -124,8 +124,11 @@
         {% endif %}
       </p>
 
+      {# eager=4: the first row is on screen as the page opens, at desktop
+         width. On a phone it is one visible card and three just below. #}
       {{ artwork_grid(artworks, empty_message="No works match these filters."
-                      if filtered else "No works in the collection yet.") }}
+                      if filtered else "No works in the collection yet.",
+                      eager=4) }}
     </div>
   </section>
 

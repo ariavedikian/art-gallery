@@ -224,6 +224,13 @@ CREATE TABLE order_items (
 -- has one: UNIQUE creates an index to enforce itself.)
 CREATE INDEX idx_order_items_order_id ON order_items (order_id);
 
+-- And by artwork: count_sales() asks "has this work ever sold?", and SQLite
+-- asks the same question itself before every DELETE FROM artworks, to
+-- enforce ON DELETE RESTRICT. Without this index both read every order line
+-- ever written -- a table that only grows. SQLite's own documentation
+-- recommends indexing the child column of every foreign key for this reason.
+CREATE INDEX idx_order_items_artwork_id ON order_items (artwork_id);
+
 -- The orders list is read newest first. ISO 8601 text sorts chronologically,
 -- which is exactly why that format was chosen for placed_at.
 CREATE INDEX idx_orders_placed_at ON orders (placed_at DESC);

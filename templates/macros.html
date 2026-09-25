@@ -53,11 +53,19 @@
 
   Note what the macro does NOT do: it never sorts or filters. Which artworks
   appear, and in what order, is decided by the SQL query that fetched them.
+
+  eager is how many cards, from the start, load their image straight away
+  rather than lazily. Lazy loading is not free: the browser waits until
+  layout has placed an image on screen before fetching it, so an image that
+  is visible the moment the page opens arrives later for being lazy. Only a
+  grid at the top of its page needs eager (All works passes one row, 4);
+  everywhere else the grid starts below the fold and lazy is right.
 #}
-{% macro artwork_grid(artworks, show_artist=true, empty_message="No works to show yet.") %}
+{% macro artwork_grid(artworks, show_artist=true, empty_message="No works to show yet.",
+                     eager=0) %}
   <ul class="artwork-grid">
     {% for art in artworks %}
-      {{ artwork_card(art, show_artist=show_artist) }}
+      {{ artwork_card(art, show_artist=show_artist, lazy=loop.index > eager) }}
     {% else %}
       {# for/else: the else branch runs only when the list is empty. #}
       <li class="muted">{{ empty_message }}</li>
@@ -106,7 +114,7 @@
   every card is by the same person, so repeating the name would be noise:
       {{ artwork_card(art, show_artist=false) }}
 #}
-{% macro artwork_card(art, show_artist=true) %}
+{% macro artwork_card(art, show_artist=true, lazy=true) %}
   {#
     The data-* attributes carry this work's details to the JavaScript
     lightbox, which reads them as card.dataset.title and so on. The server
@@ -124,7 +132,8 @@
       data-srcset="{{ art | srcset }}"
       data-href="{{ url_for('artwork_page', artwork_id=art.id) }}">
     <figure class="mat mat--fixed">
-      {{ artwork_image(art, "card", loading="lazy") }}
+      {# loading=none leaves the attribute out (xmlattr skips none): eager. #}
+      {{ artwork_image(art, "card", loading="lazy" if lazy else none) }}
     </figure>
     <div class="artwork__meta">
       <h3 class="artwork__title work-title">

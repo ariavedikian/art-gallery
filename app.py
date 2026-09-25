@@ -26,6 +26,7 @@ from the terminal with `flask --app app create-admin <name>`.
 """
 
 import functools
+import hashlib
 import io
 import os
 import re
@@ -2443,6 +2444,92 @@ def no_store_for_admin(response):
     """
     if request.path.startswith("/admin"):
         response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+# --- Caching static files -----------------------------------------------------
+#
+# Left to Flask, every static file is sent with Cache-Control: no-cache. That
+# does not mean "do not cache" -- it means "check with the server before each
+# use". So every page view asked again about the stylesheet, the four scripts
+# and every image, and waited for a "304 Not Modified" for each: a round trip
+# per file, per page, for files that had not changed.
+#
+# The fix is to make a URL mean one exact set of bytes, and then let the
+# browser keep it for a year without asking. Two ways a URL gets that promise:
+#
+#   ?v=<fingerprint>   added to every url_for('static', ...) URL below. The
+#                      fingerprint is taken from the file's CONTENT, so
+#                      editing the file changes the URL, and the browser
+#                      fetches the new one -- it never sees the old URL again.
+#   a write-once name  uploads (random names, never overwritten -- Stage 17)
+#                      and fonts (upstream version in the name). style.css
+#                      refers to the fonts by name, where url_for cannot add
+#                      a ?v, which is why they need the naming rule instead.
+
+ONE_YEAR = 365 * 24 * 60 * 60
+_WRITE_ONCE_PREFIXES = ("fonts/", "images/artworks/")
+_static_versions = {}   # file path -> ((mtime, size), fingerprint)
+
+
+def static_version(filename):
+    """A short fingerprint of a static file's content, or None if it is missing.
+
+    Hashing a file on every url_for would read it again for every link on
+    every page. So the fingerprint is kept, and recomputed only when the
+    file's modification time or size says it may have changed.
+    """
+    path = Path(app.static_folder) / filename
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (stat.st_mtime_ns, stat.st_size)
+    cached = _static_versions.get(path)
+    if cached and cached[0] == key:
+        return cached[1]
+    fingerprint = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    _static_versions[path] = (key, fingerprint)
+    return fingerprint
+
+
+@app.url_defaults
+def version_static_urls(endpoint, values):
+    """Add ?v=<fingerprint> to every url_for('static', ...) URL.
+
+    url_defaults runs inside url_for itself, so every template, the srcset
+    filter and the API's image URLs get it without any of them changing.
+    """
+    if endpoint == "static" and "filename" in values and "v" not in values:
+        version = static_version(values["filename"])
+        if version:
+            values["v"] = version
+
+
+@app.after_request
+def long_cache_for_static(response):
+    """Let the browser keep a static file for a year -- only when its URL
+    can never mean different bytes.
+
+    A ?v that does NOT match the file's current fingerprint (a page cached
+    from before an edit, asking for the old version) gets the ordinary
+    no-cache answer: caching today's bytes for a year under yesterday's
+    name would be exactly the mistake this is avoiding.
+
+    Only for a file actually served (200) or confirmed unchanged (304). A
+    404 -- including a "../" path, which Flask's static view refuses before
+    this runs -- is never fingerprinted.
+    """
+    if request.endpoint != "static" or response.status_code not in (200, 304):
+        return response
+    filename = (request.view_args or {}).get("filename", "")
+    if (filename.startswith(_WRITE_ONCE_PREFIXES)
+            or request.args.get("v") == static_version(filename)):
+        response.cache_control.no_cache = None
+        response.cache_control.public = True
+        response.cache_control.max_age = ONE_YEAR
+        # immutable: do not even revalidate when the visitor presses reload.
+        response.cache_control.immutable = True
     return response
 
 

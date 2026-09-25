@@ -362,7 +362,26 @@ styling, cluttered layouts.
 - **Visual-only decisions live in CSS**, not Jinja conditionals (for example
   the alternating artist layout uses `:nth-of-type(even)`).
 - **Type:** Cormorant Garamond for display sizes only, Inter for text.
-  Loaded from Google Fonts for now; self-host at Stage 19 for privacy and speed.
+  Self-hosted in `static/fonts/` (Stage 19), declared by `@font-face` at the
+  top of style.css: three variable-font files, Latin subset, 110KB, with
+  their SIL OFL licences beside them. Nothing is fetched from Google. A new
+  font version gets a new filename (the upstream version is in the name).
+- **A static URL means one exact set of bytes, so it is cached for a year.**
+  `url_for('static', ...)` adds `?v=<fingerprint of the content>`
+  (`version_static_urls`), and `long_cache_for_static` sends
+  `public, max-age=31536000, immutable` when the `?v` matches the file, or
+  for write-once names (`fonts/`, `images/artworks/`). Anything else keeps
+  Flask's `no-cache`. Editing a file changes its URL; never hard-code a
+  `/static/...` path, or it loses the fingerprint.
+- **Lazy-load only what starts off screen.** A lazy image waits for layout
+  before it is fetched. `artwork_grid(..., eager=N)` loads the first N cards
+  at once (All works: one row, 4); the cart's first three lines are eager;
+  the hero and the artwork/artist page images are eager with
+  `fetchpriority="high"`.
+- **Every foreign-key child column is indexed** (`order_items.order_id`,
+  `order_items.artwork_id`, `artworks.artist_id`): SQLite checks the child
+  table on every parent DELETE. Queries per page are 1-5 and must not grow
+  with the collection; `tests/test_performance.py` adds 30 works and checks.
 
 ## Deferred: Stage 14 (real payments)
 
@@ -432,6 +451,7 @@ python tests/test_cleanup.py
 python tests/test_navigation.py
 python tests/test_layout.py
 python tests/test_accessibility.py
+python tests/test_performance.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -469,6 +489,7 @@ art-gallery/
 │                  #   admin/ holds login, dashboard, artwork_form,
 │                  #   artwork_delete, orders
 ├── static/           # css/style.css, js/{lightbox,filter,cart,nav}.js,
+│                  #   fonts/ (woff2 + OFL licences),
 │                  #   images/placeholders (SVG, committed),
 │                  #   images/artworks (uploads, gitignored)
 ├── init_db.py        # rebuilds the database from SQL files
@@ -559,17 +580,19 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       800px block moved to 50em. Re-audited: no page overflows at any
       width. `tests/test_layout.py` pins the invisible one-line fixes.
       Found, not in scope: `/about` still returns bare text from Stage 1.
-- [~] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
+- [x] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
       navigation, contrast, query efficiency. Audited first (15 pages):
       structure, labels, ids, ARIA and contrast all passed already; queries
       1-5 per page with no per-row loops. Split in two.
       **Part 1 (done):** alt text as data (`alt_text`, `portrait_alt`,
       `HERO`, SQL fallback, admin field), the lightbox copying it, a focus
       style for the admin checkboxes, `tests/test_accessibility.py`.
-      **Part 2:** static files re-validated on every page (`no-cache`):
-      versioned URLs and long caching; self-hosted fonts (approved);
-      an index on `order_items.artwork_id` (deletes scan it); the first
-      gallery row and cart lines are lazy but visible.
+      **Part 2 (done):** fingerprinted static URLs cached for a year
+      (a second page now makes no request for CSS, JS or fonts);
+      self-hosted variable fonts; an index on `order_items.artwork_id`;
+      eager loading for what is on screen at first.
+      `tests/test_performance.py` checks all four, and that queries per
+      page do not grow with the collection.
       Found, not in scope: artist portraits' width/height are still typed
       into two templates (800x1000), so a real portrait at Stage 21 would
       need a template change; the API does not expose alt text.

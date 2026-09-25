@@ -42,7 +42,9 @@
             <li class="cart-line{% if line.issue %} cart-line--issue{% endif %}">
 
               <figure class="mat cart-line__figure">
-                {{ artwork_image(art, "cart", loading="lazy") }}
+                {# The first lines are on screen as the cart opens, so they
+                   load at once; a long cart's later lines load lazily. #}
+                {{ artwork_image(art, "cart", loading="lazy" if loop.index > 3 else none) }}
               </figure>
 
               <div class="cart-line__body">

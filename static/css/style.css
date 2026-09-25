@@ -4,6 +4,54 @@
    Organised top to bottom: tokens -> reset -> layout -> type -> components.
    ========================================================================== */
 
+/* --- 0. Fonts ----------------------------------------------------------------
+   Self-hosted since Stage 19 (they used to come from Google Fonts). Both are
+   released under the SIL Open Font License; the licence texts sit beside the
+   files in static/fonts/.
+
+   Variable fonts: ONE file holds a whole range of weights, so
+   font-weight: 500 600 covers both weights the site uses with a single
+   download. Three files in all, about 110KB.
+
+   font-display: swap shows the text at once in a fallback face and swaps
+   the real one in when it arrives, so text is never invisible while a font
+   loads.
+
+   unicode-range says which characters a file covers (the Latin subset);
+   anything outside it falls back to a system font. If Stage 21 needs text in
+   another script -- Armenian, say -- that subset is a file to add here.
+
+   The filenames carry the upstream version (v21, v20). A new version gets a
+   new name, never the old name, so a font URL always means the same bytes
+   and browsers may cache it for good (see long_cache_for_static in app.py). */
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: swap;
+  src: url("../fonts/cormorant-garamond-v21-latin-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/cormorant-garamond-v21-latin-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("../fonts/inter-v20-latin-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* --- 1. Design tokens -------------------------------------------------------
    CSS custom properties: named values defined once and reused everywhere.
    Change --ink here and every piece of text that uses it updates at once.
