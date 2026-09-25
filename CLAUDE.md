@@ -86,6 +86,26 @@ styling, cluttered layouts.
 - **JavaScript is an enhancement, never the only path.** Every card is a
   real link to a real page; the lightbox intercepts the click. With JS off
   the site still works, and modifier-clicks are left alone.
+- **Breakpoints come from the content, in em.** A layout breaks where its
+  content stops fitting, not at a list of device sizes: the header's 64em
+  is where the wordmark and nav (about 965px, measured) no longer fit one
+  row. em, so a reader who enlarges their text gets the narrow layout
+  sooner. Written as range syntax, `@media (width < 64em)`. If the gallery
+  name or artist names grow at Stage 21, re-measure. (The older 800px block
+  in section 22 is still px; Stage 18 part 2 revisits it.)
+- **The phone menu is switched on by its script.** `static/js/nav.js` adds
+  `site-header--menu` to the header; only then does the CSS show the Menu
+  button and fold the links away. With JavaScript off, or if the script
+  fails, every link stays visible. The button's `display` is set in ONE rule,
+  `.site-header--menu .menu-toggle`; `tests/test_navigation.py` fails if any
+  other rule sets it (one did, and showed a dead button with JS off).
+- **A widget's state lives in one ARIA attribute.** The menu is open when the
+  button's `aria-expanded` is "true": the script flips it, the CSS reads it
+  (`[aria-expanded="false"] ~ .site-nav`), a screen reader announces it.
+  No class or variable keeps a second copy that could disagree.
+- **DOM order is focus order.** CSS `order` may move things visually, but Tab
+  follows the HTML. The Menu button sits straight before the nav it opens,
+  and the cart link after it, outside the menu so the count stays visible.
 - **Use the platform before writing it yourself** (`<dialog>` for modal
   behaviour, focus handling and the backdrop). Where a built-in could not
   be verified, add a documented fallback rather than trusting it blindly.
@@ -375,6 +395,7 @@ python tests/test_cms.py
 python tests/test_images.py
 python tests/test_uploads.py
 python tests/test_cleanup.py
+python tests/test_navigation.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -411,7 +432,7 @@ art-gallery/
 │                  #   checkout, order, orders, 404, 413, macros;
 │                  #   admin/ holds login, dashboard, artwork_form,
 │                  #   artwork_delete, orders
-├── static/           # css/style.css, js/{lightbox,filter,cart}.js,
+├── static/           # css/style.css, js/{lightbox,filter,cart,nav}.js,
 │                  #   images/placeholders (SVG, committed),
 │                  #   images/artworks (uploads, gitignored)
 ├── init_db.py        # rebuilds the database from SQL files
@@ -489,8 +510,17 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       after the row change saves (row first, then files), only when no row
       uses them; the image joins stock in the UPDATE guard; `DELETE ...
       RETURNING`; `flask sweep-uploads` for strays, looking before deleting.
-- [ ] **18 — Responsive polish.** Media queries, responsive type and grids,
-      mobile navigation, tested across breakpoints.
+- [~] **18 — Responsive polish.** Media queries, responsive type and grids,
+      mobile navigation, tested across breakpoints. Split in two, after a
+      measured audit of every page at 320-1440px.
+      **Part 1 (done):** the phone menu (Menu button + visible cart, switched
+      on by nav.js, links visible without JS), a content-derived 64em
+      breakpoint that also closed a two-row header gap at 800-1000px.
+      **Part 2:** what the audit found elsewhere: admin tables (+237px) and
+      the artwork form (+87px) overflowing at 320px, breadcrumbs (15px) and
+      admin checkboxes (18px) under the 24px target size, 10px tags, the
+      admin bar wrapping, and the 800px block moved to em.
+      Found, not in scope: `/about` still returns bare text from Stage 1.
 - [ ] **19 — Performance & accessibility.** Lazy loading, alt text, keyboard
       navigation, contrast, query efficiency.
 - [ ] **20 — Security basics.** Input validation, SQL injection, output

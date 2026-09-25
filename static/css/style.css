@@ -74,7 +74,8 @@ a { color: inherit; }
 /* A single visible focus style for every keyboard-focusable element.
    Never remove focus outlines without replacing them. */
 a:focus-visible,
-.button:focus-visible {
+.button:focus-visible,
+.menu-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -189,18 +190,19 @@ a:focus-visible,
   background: var(--paper);
 }
 
-/* Flexbox: lay children out in a row. Perfect for a nav bar — a handful of
-   items sized by their content, pushed apart. */
+/* Flexbox: lay children out in a row. Perfect for a nav bar -- a handful of
+   items sized by their content. The wordmark's auto margin soaks up the
+   spare room, pushing the nav and the cart to the right. */
 .site-header__inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-block: var(--space-3);
   flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding-block: var(--space-3);
 }
 
 .wordmark {
+  margin-right: auto;
   font-family: var(--font-display);
   font-size: 1.125rem;
   font-weight: 600;
@@ -211,16 +213,24 @@ a:focus-visible,
 
 .wordmark--small { font-size: 0.9375rem; }
 
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
+/* The nav links, the cart link and the menu button share one voice: small,
+   tracked capitals. */
+.nav,
+.cart-link,
+.menu-toggle {
   font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.nav a {
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.nav a,
+.cart-link {
   text-decoration: none;
   color: var(--ink-soft);
   padding-bottom: 2px;
@@ -243,9 +253,108 @@ a:focus-visible,
 }
 
 .nav a:hover,
-.nav a[aria-current="page"] {
+.nav a[aria-current="page"],
+.cart-link:hover,
+.cart-link[aria-current="page"] {
   color: var(--ink);
   border-bottom-color: var(--ink);
+}
+
+/* Only exists for small screens, and only once nav.js has run. */
+.menu-toggle { display: none; }
+
+/* --- 5b. Small-screen header -----------------------------------------------
+   Below 64em the full row no longer fits: the wordmark and seven links need
+   about 965px (measured). So the breakpoint comes from the CONTENT, not from
+   a list of phone and tablet sizes -- a design breaks where its content
+   stops fitting, whatever device that happens on.
+
+   In em rather than px: if someone sets their browser's text size larger,
+   the links grow and need more room, and 64em grows with them. 64em of
+   the default 16px is 1024px. (width < 64em) is the newer range syntax for
+   max-width, without the off-by-one of max-width: 1023px. */
+
+@media (width < 64em) {
+  .site-header__inner {
+    gap: var(--space-1) var(--space-2);
+    padding-block: var(--space-1);
+  }
+
+  /* On a phone the name may take two lines rather than push the buttons
+     off the row. min-width: 0 lets a flex item shrink below its text. */
+  .wordmark {
+    flex: 1 1 0;
+    min-width: 0;
+    line-height: 1.25;
+  }
+
+  /* The nav takes a row of its own, under the name, Menu and Cart.
+     order moves it to the end of the row; DOM order is unchanged, so Tab
+     still goes from the Menu button straight into the links it opened. */
+  .site-nav {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  /* At least 44px tall: a fingertip, not a mouse pointer. */
+  .cart-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    min-height: 44px;
+    border-bottom: 0;
+  }
+
+  /* With JavaScript off the links stay visible, wrapped, but each gets
+     enough height to tap. */
+  .nav a {
+    display: inline-block;
+    padding-block: 0.6rem;
+  }
+
+  /* --- With nav.js running: a real menu --- */
+
+  /* The ONLY rule that sets the button's display. Had the shared 44px rule
+     above set it too, it would out-rank .menu-toggle { display: none } (same
+     specificity, later in the file) and show a dead button with JS off. */
+  .site-header--menu .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: var(--space-2);
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--ink);
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .site-header--menu .menu-toggle[aria-expanded="true"] { border-color: var(--ink); }
+
+  /* The rule that opens and closes the menu. It READS the button's
+     aria-expanded, so what a screen reader announces and what the eye sees
+     cannot disagree. ~ means "a later sibling": the nav after the button. */
+  .site-header--menu .menu-toggle[aria-expanded="false"] ~ .site-nav { display: none; }
+
+  .site-header--menu .nav {
+    flex-direction: column;
+    gap: 0;
+    padding-bottom: var(--space-2);
+    font-size: 0.8125rem;
+  }
+
+  .site-header--menu .nav li + li { border-top: 1px solid var(--line); }
+
+  .site-header--menu .nav a {
+    display: block;
+    padding-block: 0.8rem;
+    border-bottom: 0;
+  }
+
+  .site-header--menu .nav a[aria-current="page"] {
+    text-decoration: underline;
+    text-underline-offset: 0.4em;
+  }
 }
 
 /* --- 6. Hero ---------------------------------------------------------------- */
@@ -1181,8 +1290,6 @@ th.admin-table__number { text-align: right; }
   .feature:nth-of-type(even) .feature__media { order: 0; }
 
   .spotlight__figure { padding: var(--space-3); }
-
-  .site-header__inner { gap: var(--space-2); }
 
   .checkout,
   .order {

@@ -33,6 +33,7 @@
   <script src="{{ url_for('static', filename='js/lightbox.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/filter.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/cart.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
 </head>
 <body>
 
@@ -60,7 +61,20 @@
     <div class="container site-header__inner">
       <a class="wordmark" href="{{ url_for('home') }}">{{ gallery_name }}</a>
 
-      <nav aria-label="Main">
+      {# The phone menu button. Hidden by CSS until static/js/nav.js has run
+         and marked the header as having a working menu -- so with
+         JavaScript off there is no dead button, and the links simply show.
+
+         aria-expanded is the menu's whole state, in one place: the script
+         flips it, screen readers announce it ("Menu, collapsed"), and the
+         CSS hides or shows the nav by reading it. The label stays "Menu"
+         either way; aria-expanded already says open or closed.
+
+         The button comes straight before the nav it controls, so pressing
+         Tab after opening it lands on the first link. #}
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
+
+      <nav class="site-nav" id="site-nav" aria-label="Main">
         <ul class="nav">
           {# nav_artists and gallery_name come from the context processor in
              app.py, so they exist on every page without each route passing them.
@@ -90,25 +104,28 @@
             <li><a href="{{ orders_url }}"
                    {%- if request.path == orders_url %} aria-current="page"{% endif %}>Orders</a></li>
           {% endif %}
-
-          {# cart_count comes from the context processor, like the nav artists,
-             so the number is right on every page without any route passing it.
-
-             The badge is ALWAYS in the page, hidden when the count is zero,
-             rather than left out. static/js/cart.js updates it after adding a
-             work without a reload -- and it cannot update an element that
-             was never rendered, which is exactly what the first item added
-             to an empty cart would hit. id= gives the script a direct handle. #}
-          {% set cart_url = url_for('cart') %}
-          <li><a href="{{ cart_url }}"
-                 {%- if request.path == cart_url %} aria-current="page"{% endif %}>Cart
-              <span class="nav__count" id="cart-count"
-                    {%- if not cart_count %} hidden{% endif %}>{{ cart_count }}</span>
-              <span class="visually-hidden" id="cart-count-label">
-                {%- if cart_count %} ({{ cart_count }} {{ "item" if cart_count == 1 else "items" }}){% endif -%}
-              </span></a></li>
         </ul>
       </nav>
+
+      {# Outside the menu, so the count is visible on a phone without opening
+         it. On a wide screen it sits at the end of the row, after the nav.
+
+         cart_count comes from the context processor, like the nav artists,
+         so the number is right on every page without any route passing it.
+
+         The badge is ALWAYS in the page, hidden when the count is zero,
+         rather than left out. static/js/cart.js updates it after adding a
+         work without a reload -- and it cannot update an element that
+         was never rendered, which is exactly what the first item added
+         to an empty cart would hit. id= gives the script a direct handle. #}
+      {% set cart_url = url_for('cart') %}
+      <a class="cart-link" href="{{ cart_url }}"
+         {%- if request.path == cart_url %} aria-current="page"{% endif %}>Cart
+        <span class="nav__count" id="cart-count"
+              {%- if not cart_count %} hidden{% endif %}>{{ cart_count }}</span>
+        <span class="visually-hidden" id="cart-count-label">
+          {%- if cart_count %} ({{ cart_count }} {{ "item" if cart_count == 1 else "items" }}){% endif -%}
+        </span></a>
     </div>
   </header>
 
