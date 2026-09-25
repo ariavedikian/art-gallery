@@ -59,23 +59,96 @@ HERO = {
     "alt": "Placeholder hero image",
 }
 
-# The key Flask uses to SIGN the session cookie. Signing is not encryption:
-# the visitor can read what is in their cookie, they simply cannot change it
-# without the signature failing and Flask throwing the whole cookie away.
+# --- Configuration from the environment ---------------------------------------
+# Two environment variables, both optional on your own machine:
 #
-# In development this falls back to a fixed string so the app runs out of the
-# box. A real deployment sets ART_GALLERY_SECRET_KEY to a long random value
-# and never commits it; Stage 20 comes back to this properly.
-app.secret_key = os.environ.get("ART_GALLERY_SECRET_KEY", "dev-key-not-a-secret")
+#   ART_GALLERY_ENV         "production" on a real server; unset (or
+#                           "development") everywhere else
+#   ART_GALLERY_SECRET_KEY  the key that signs session cookies; required in
+#                           production, at least MIN_SECRET_KEY_LENGTH long
+#
+# The secret key is what makes the session cookie trustworthy. Signing is not
+# encryption: a visitor can READ their cookie, they just cannot change it, or
+# write a new one, without the key. Until Stage 20 the fallback key was a
+# fixed string in this file, so anyone with the repository could sign
+# {"admin_id": 1} and walk into /admin. Now there is no key anybody else has:
+# the environment's, or one generated on this machine and kept out of git.
 
-# Now that the session cookie can prove someone is an ADMIN, how it travels
-# matters. SameSite=Lax tells the browser not to send it along with a POST
-# that starts on another website. Without that, a page elsewhere could hold a
-# hidden form that posts to /admin/... and the admin's own browser would
-# helpfully attach their login. Modern browsers already default to Lax;
-# saying it explicitly means we rely on our code, not on their defaults.
-# (The full defence against cross-site requests is Stage 20.)
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+ENVIRONMENTS = ("development", "production")
+MIN_SECRET_KEY_LENGTH = 32
+
+
+def load_secret_key(environ, production, instance_path):
+    """The session-signing key: the environment's, or in development this
+    machine's own, generated once into instance/secret_key (gitignored)."""
+    key = environ.get("ART_GALLERY_SECRET_KEY")
+    if key is not None:
+        if len(key) < MIN_SECRET_KEY_LENGTH:
+            raise RuntimeError(
+                f"ART_GALLERY_SECRET_KEY is {len(key)} characters; use at least "
+                f"{MIN_SECRET_KEY_LENGTH}. Make one with: "
+                f'python -c "import secrets; print(secrets.token_hex(32))"')
+        return key
+    if production:
+        # A file that appears on first run is fine for a laptop. A server
+        # should be handed its key deliberately, so it is never lost with a
+        # redeploy, and never shared between machines by copying a folder.
+        raise RuntimeError("ART_GALLERY_ENV is production but "
+                           "ART_GALLERY_SECRET_KEY is not set.")
+
+    path = Path(instance_path) / "secret_key"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # O_EXCL: create the file, or fail if it exists -- the key is written
+        # once and never overwritten. 0o600: readable by this user only (on
+        # Linux and macOS; Windows keeps a user's files private by default).
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        key = path.read_text(encoding="ascii").strip()
+        if len(key) < MIN_SECRET_KEY_LENGTH:
+            raise RuntimeError(f"{path} does not hold a usable key. Delete it, "
+                               f"and a new one is made (everyone is logged out).")
+        return key
+    key = secrets.token_hex(32)     # 64 hex characters, 256 random bits
+    with os.fdopen(fd, "w", encoding="ascii") as file:
+        file.write(key)
+    return key
+
+
+def configure(environ=os.environ, instance_path=None):
+    """Apply the settings that depend on where the app is running.
+
+    Called once, just below. The tests call it again with their own values to
+    check the production settings without being in production.
+    """
+    environment = environ.get("ART_GALLERY_ENV", "development")
+    if environment not in ENVIRONMENTS:
+        # A typo such as "prod" must not quietly mean development.
+        raise RuntimeError(f"ART_GALLERY_ENV is {environment!r}; use one of "
+                           f"{', '.join(ENVIRONMENTS)}.")
+    production = environment == "production"
+    app.config["PRODUCTION"] = production
+
+    app.secret_key = load_secret_key(environ, production,
+                                     instance_path or app.instance_path)
+
+    # SameSite=Lax: the browser leaves the cookie off a POST that starts on
+    # another website. It is the browser's rule, not ours; Part 4's CSRF
+    # tokens are the check this server makes itself.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+    # Secure: the cookie is only ever sent over HTTPS, so nobody on the same
+    # Wi-Fi can read it off the wire. Off in development, which is plain
+    # http://127.0.0.1, where a Secure cookie would never come back.
+    app.config["SESSION_COOKIE_SECURE"] = production
+
+    # The __Host- prefix is a promise the browser enforces: a cookie with this
+    # name is accepted only if it is Secure, for this exact host, path /. No
+    # other subdomain of the site's domain can plant or overwrite it.
+    app.config["SESSION_COOKIE_NAME"] = "__Host-session" if production else "session"
+
+
+configure()
 
 # The largest request body Flask will accept, uploads included. Werkzeug checks
 # the declared length BEFORE reading the body, so an oversized upload is
@@ -88,7 +161,7 @@ DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
 
 # The schema this code was written against: the PRAGMA user_version that
 # schema.sql writes into the file. The two change together.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Database files already found to be the right version, so the check costs
 # one statement per file per process rather than one per request.
@@ -923,7 +996,14 @@ def get_order_items(order_id):
 # here, so authorisation is simply "is an admin logged in", but they remain
 # two separate questions, and Stage 20 will care about the difference.
 
-ADMIN_KEY = "admin_id"
+# The session value for a logged-in admin: {"id": 3, "key": "...", "at": ...}.
+# id says who; key must match that admin's session_key column; at is when
+# they logged in (Unix seconds), for the time limit below.
+ADMIN_KEY = "admin"
+
+# How long an admin login lasts, counted from logging in, however busy the
+# admin has been. A forgotten login on a shared computer ends by itself.
+ADMIN_SESSION_SECONDS = 12 * 60 * 60
 
 # Length is what makes a password hard to guess, far more than rules about
 # symbols and capitals, which mostly produce "Password1!". Twelve characters
@@ -941,33 +1021,66 @@ def get_admin_by_username(username):
     """The admin row for this username, or None. Case-insensitive, because
     the column is declared COLLATE NOCASE in schema.sql."""
     return query_db(
-        "SELECT id, username, password_hash FROM admins WHERE username = ?",
+        "SELECT id, username, password_hash, session_key FROM admins WHERE username = ?",
         (username,), one=True)
+
+
+def _login_in_cookie():
+    """The admin login the session claims, if it is well-formed, else None."""
+    login = session.get(ADMIN_KEY)
+    if (isinstance(login, dict)
+            and type(login.get("id")) is int
+            and isinstance(login.get("key"), str)
+            and type(login.get("at")) is int):
+        return login
+    return None
 
 
 def current_admin():
     """The logged-in admin (id and username), or None. Looked up once per request.
 
-    The session holds only the admin's id. The row is re-read from the
-    database on every request rather than trusted from the cookie, for the
-    same reason the cart re-reads prices: the cookie can say who you WERE.
-    Deleting an admin's row therefore locks them out on their very next
-    click, even though their cookie still carries the old id.
+    The cookie only CLAIMS a login. Three things have to be true now, in the
+    database and the clock, for the claim to be honoured:
+
+      the admin still exists      (deleting a row locks them out at once)
+      the key still matches       (logout and a new password change it)
+      it is under 12 hours old    (ADMIN_SESSION_SECONDS)
+
+    The cookie can say who you WERE; the database says who you are.
     """
     if "admin" not in g:
         admin = None
-        admin_id = session.get(ADMIN_KEY)
+        login = _login_in_cookie()
 
-        if isinstance(admin_id, int):
-            admin = query_db("SELECT id, username FROM admins WHERE id = ?",
-                             (admin_id,), one=True)
-            if admin is None:
-                # The account is gone. Forget it, so the stale id stops
-                # being looked up on every request.
-                session.pop(ADMIN_KEY, None)
+        if login is not None:
+            row = query_db("SELECT id, username, session_key FROM admins WHERE id = ?",
+                           (login["id"],), one=True)
+            age = int(time.time()) - login["at"]
+            # compare_digest takes the same time however many characters
+            # match, so timing the answer cannot reveal the key bit by bit.
+            if (row is not None
+                    and secrets.compare_digest(row["session_key"], login["key"])
+                    and 0 <= age < ADMIN_SESSION_SECONDS):
+                admin = {"id": row["id"], "username": row["username"]}
+
+        if admin is None and ADMIN_KEY in session:
+            # Gone, replaced, expired or malformed: forget it, so a dead login
+            # stops being looked up on every request.
+            session.pop(ADMIN_KEY, None)
 
         g.admin = admin
     return g.admin
+
+
+def new_session_key():
+    """A fresh value for admins.session_key: 128 random bits."""
+    return secrets.token_hex(16)
+
+
+def end_admin_sessions(admin_id):
+    """Invalidate every session this admin has, wherever it is."""
+    get_db().execute("UPDATE admins SET session_key = ? WHERE id = ?",
+                     (new_session_key(), admin_id))
 
 
 def admin_required(view):
@@ -1056,18 +1169,24 @@ def set_admin_password(username, password):
 
     Only the hash is written. The password itself exists in memory for the
     length of this call and nowhere else.
+
+    A new password also gets a new session_key. The usual reason to change a
+    password is suspecting someone else has it -- and they may be logged in
+    already. This ends their session along with every other.
     """
     password_hash = generate_password_hash(password)
     db = get_db()
 
     if get_admin_by_username(username) is None:
         db.execute(
-            "INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)",
-            (username, password_hash,
+            "INSERT INTO admins (username, password_hash, session_key, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (username, password_hash, new_session_key(),
              datetime.now(timezone.utc).isoformat(timespec="seconds")))
     else:
-        db.execute("UPDATE admins SET password_hash = ? WHERE username = ?",
-                   (password_hash, username))
+        db.execute("UPDATE admins SET password_hash = ?, session_key = ? "
+                   "WHERE username = ?",
+                   (password_hash, new_session_key(), username))
 
 
 # --- Admin: editing the collection -------------------------------------------
@@ -2293,7 +2412,10 @@ def admin_login_submit():
                                username=username,
                                error="That username and password do not match."), 400
 
-    session[ADMIN_KEY] = admin["id"]
+    # The key is copied from the admin's row: from now on, this cookie is
+    # honoured only while the row still holds the same key (current_admin).
+    session[ADMIN_KEY] = {"id": admin["id"], "key": admin["session_key"],
+                          "at": int(time.time())}
     flash(f"Logged in as {admin['username']}.", "success")
     return redirect(safe_next(next_url))
 
@@ -2309,7 +2431,16 @@ def admin_logout():
 
     Only the admin key is removed. The rest of the session -- a cart, the
     remembered orders -- belongs to the visitor, not to the admin login.
+
+    Removing it from THIS cookie is not enough on its own: the session lives
+    in the cookie, so a copy taken earlier (a stolen cookie, another device)
+    would still be a valid, signed login. Replacing the admin's session_key
+    makes every copy stop matching. So logging out here logs this admin out
+    everywhere -- the only way a cookie session can be ended for certain.
     """
+    admin = current_admin()
+    if admin is not None:
+        end_admin_sessions(admin["id"])
     session.pop(ADMIN_KEY, None)
     flash("Logged out.", "notice")
     return redirect(url_for("home"))
@@ -2578,6 +2709,14 @@ def security_headers(response):
     and error pages, which go through after_request too."""
     for name, value in SECURITY_HEADERS.items():
         response.headers.setdefault(name, value)
+
+    # Production only: "for the next year, reach this site over HTTPS only,
+    # even if someone types http://". Pairs with the Secure cookie: without
+    # it, the very first plain-http request is one an attacker can intercept.
+    # Never on http://127.0.0.1 in development, which has no HTTPS to insist on.
+    if app.config["PRODUCTION"]:
+        response.headers.setdefault("Strict-Transport-Security",
+                                    f"max-age={ONE_YEAR}")
     return response
 
 

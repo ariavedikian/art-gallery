@@ -173,8 +173,17 @@ styling, cluttered layouts.
   being loaded.
 - **A cart line with a problem is shown, not silently corrected**, and left
   out of the subtotal. The visitor decides what to do about it.
-- **`SECRET_KEY` comes from `ART_GALLERY_SECRET_KEY`**, with a dev fallback so
-  the app runs out of the box. Stage 20 revisits this properly.
+- **Configuration comes from two environment variables, read by
+  `configure()`.** `ART_GALLERY_ENV` is `development` (the default) or
+  `production`; anything else refuses to start (a typo must not mean
+  development). `ART_GALLERY_SECRET_KEY` signs the session cookie: at least
+  32 characters, required in production. In development without it, a key
+  is generated once into `instance/secret_key` (gitignored, `O_EXCL`, 0600),
+  so no key is ever committed or shared. Production adds a `Secure` cookie
+  named `__Host-session` (only this host, only HTTPS, no subdomain can set
+  it) and HSTS. Deleting `instance/secret_key` logs everyone out and empties
+  every cart. The tests set their own random key and development, in
+  support.py, so they never touch `instance/`.
 - **Transactions are explicit.** The connection is opened with
   `isolation_level=None`, so Python never opens or commits one behind your
   back. `place_order()` is the only writer and manages its own
@@ -246,13 +255,21 @@ styling, cluttered layouts.
   Decorators apply bottom-up; the other order registers the unlocked view.
   `tests/test_admin.py` walks the whole routing table, so a new /admin route
   that forgets the lock fails the suite.
-- **The session holds the admin's id; the database decides.** `current_admin()`
-  re-reads the row each request, so deleting an admin locks them out at once.
+- **The cookie claims a login; the database decides.** The session holds
+  `{"id", "key", "at"}`. `current_admin()` honours it only if the admin
+  still exists, `key` matches `admins.session_key` (`compare_digest`), and
+  it is under `ADMIN_SESSION_SECONDS` (12h, from login, not idle time).
+  Anything else, malformed included, is removed from the cookie. A cookie
+  session cannot be deleted on the server, only made to stop matching:
+  logout and a new password replace `session_key`, which ends every copy
+  on every device. The key is also a second barrier behind the secret key:
+  a forger with the signing key still cannot guess it.
 - **One message for every failed login**, and a dummy hash check for unknown
   usernames, so neither the wording nor the timing reveals which exist.
 - **`next=` is honoured only if it is a path on this site** (`safe_next()`):
   no scheme, no host, not `//`, no backslash. Otherwise, an open redirect.
-- **Logout is a POST**, and only removes the admin key; the visitor's cart and
+- **Logout is a POST**, ends every session of that admin (above), and only
+  removes the admin key from this cookie; the visitor's cart and
   remembered orders belong to the browser, not the login.
 - **Admin responses are `Cache-Control: no-store`**, and admin pages carry
   `noindex`. The public site never links to `/admin`.
@@ -454,8 +471,7 @@ styling, cluttered layouts.
   (logout), artwork.html and cart.html (cart), checkout.html, and the admin
   templates (login, artwork form, delete, ship); `/api/cart` takes JSON
   via fetch().
-- `SECRET_KEY` falls back to a fixed dev string; the session cookie is not
-  `Secure` (development runs on plain http); login has no rate limit.
+- Login has no rate limit (Part 5).
 - Uploads are served by extension from static/ (the extension comes from
   the decoded format, never the upload's name).
 
@@ -510,6 +526,10 @@ cd "C:\Users\ariav\ICS\Claude Projects\art-gallery"
 python app.py          # http://127.0.0.1:5000
 ```
 
+The first run creates `instance/secret_key` (gitignored). On a real server,
+set `ART_GALLERY_ENV=production` and `ART_GALLERY_SECRET_KEY` (make one with
+`python -c "import secrets; print(secrets.token_hex(32))"`) instead.
+
 `venv/` is disposable and gitignored; rebuild with
 `python -m venv venv` then `pip install -r requirements.txt`.
 
@@ -530,6 +550,7 @@ python tests/test_accessibility.py
 python tests/test_performance.py
 python tests/test_input.py
 python tests/test_output.py
+python tests/test_sessions.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -692,8 +713,12 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       violations on any page, lightbox and fetch() still work, an injected
       inline script/handler/style is refused, and a page on another port
       cannot frame /admin.
-      **Part 3:** sessions: no public fallback key, production cookie
-      settings, admin sessions that expire and can be revoked.
+      **Part 3 (done):** `configure()` and `ART_GALLERY_ENV`; no committed
+      key (generated `instance/secret_key`, or the environment's, required
+      in production); production cookies `Secure` + `__Host-` + HSTS;
+      revocable admin sessions (`admins.session_key`, schema version 2)
+      with a 12-hour limit. `tests/test_sessions.py` replays the audit's
+      forged-cookie and copied-cookie attacks.
       **Part 4:** CSRF tokens on every POST and on `/api/cart`.
       **Part 5:** login throttling, trusted hosts, the mock payment off
       outside development, payment security design for Stage 14.

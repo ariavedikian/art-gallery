@@ -6,6 +6,8 @@ working on, and a tidy way to report pass or fail. Both live here so no test
 file carries its own copy of them.
 """
 
+import os
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -16,7 +18,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import app  # noqa: E402  (the path has to be set before this import)
+# Tests run as development, whatever the shell says, with a key of their own
+# for this run -- so importing the app never writes instance/secret_key into
+# the project, and never reads the one there.
+os.environ["ART_GALLERY_ENV"] = "development"
+os.environ["ART_GALLERY_SECRET_KEY"] = secrets.token_hex(32)
+
+import app  # noqa: E402  (the path and environment must be set first)
 
 DATABASE_DIR = PROJECT_ROOT / "database"
 

@@ -23,7 +23,7 @@ PRAGMA foreign_keys = ON;
 -- to run against an older build, naming the fix, rather than failing later
 -- with "no such column". Any change to a table, column or index here: add 1,
 -- and change SCHEMA_VERSION in app.py to match.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;     -- 2: admins.session_key (Stage 20)
 
 
 -- Drop in reverse order of dependency: artworks points at artists, so it has
@@ -265,6 +265,13 @@ CREATE TABLE admins (
     -- used ("scrypt:..."), so a stronger method can be adopted later without
     -- breaking the hashes already stored.
     password_hash TEXT NOT NULL,
+
+    -- A random value the admin's session cookie must carry. The session lives
+    -- in the cookie, so the server cannot delete it; what it CAN do is change
+    -- this, after which no existing cookie matches. Logging out and changing
+    -- the password both replace it, which ends every copy of the old cookie,
+    -- on every device, at once.
+    session_key   TEXT NOT NULL,
 
     created_at    TEXT NOT NULL
 );

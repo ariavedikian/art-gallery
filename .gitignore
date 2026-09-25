@@ -10,3 +10,7 @@ static/images/artworks/
 
 # Editor/tooling scratch, not part of the project
 .claude/
+
+# Per-machine files Flask keeps outside the code: the generated session key
+# (instance/secret_key) must never be committed.
+instance/
