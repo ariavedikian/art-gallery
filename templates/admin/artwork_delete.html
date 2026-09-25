@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
 
 {#
   "Are you sure?" as a page rather than a JavaScript confirm(), so the question
@@ -44,6 +45,7 @@
           cart. This cannot be undone.</p>
         <form class="admin-form__actions" method="post"
               action="{{ url_for('admin_artwork_delete', artwork_id=artwork.id) }}">
+          {{ csrf_field() }}
           <button class="button button--danger" type="submit">Delete permanently</button>
           <a class="button button--quiet" href="{{ url_for('admin_artwork_edit', artwork_id=artwork.id) }}">Keep it</a>
         </form>

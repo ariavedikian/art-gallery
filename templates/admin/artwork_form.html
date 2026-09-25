@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_image, form_field %}
+{% from "macros.html" import artwork_image, csrf_field, form_field %}
 
 {#
   Create or edit an artwork. One template for both jobs: `artwork_id` is set
@@ -49,6 +49,7 @@
          file's NAME: the server would get "painting.jpg" and no picture. #}
       <form class="admin-form" method="post" novalidate enctype="multipart/form-data"
             action="{{ url_for('admin_artwork_update', artwork_id=artwork_id) if editing else url_for('admin_artwork_create') }}">
+        {{ csrf_field() }}
 
         {% if editing %}
           {# The stock this form showed when it was opened. update_artwork()

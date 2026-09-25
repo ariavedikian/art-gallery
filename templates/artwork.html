@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, artwork_image, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, csrf_field, price_status %}
 
 {#
   One artwork, in detail. The route fetches a single row and passes it in as
@@ -79,6 +79,7 @@
               <form class="purchase__form" method="post"
                     action="{{ url_for('cart_add') }}"
                     data-api="{{ url_for('api_cart_add') }}">
+                {{ csrf_field() }}
                 <input type="hidden" name="artwork_id" value="{{ artwork.id }}">
 
                 {% if artwork.inventory_quantity > 1 %}

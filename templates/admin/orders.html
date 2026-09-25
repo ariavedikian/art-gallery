@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
 
 {#
   Every order, newest first, with the one action the admin can take today:
@@ -60,6 +61,7 @@
                 <td>
                   {% if "shipped" in transitions.get(order.status, ()) %}
                     <form method="post" action="{{ url_for('admin_order_ship', reference=order.reference) }}">
+                      {{ csrf_field() }}
                       <button class="button button--quiet button--small" type="submit">
                         Mark shipped<span class="visually-hidden"> — {{ order.reference }}</span>
                       </button>

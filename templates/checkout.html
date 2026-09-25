@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
 
 {#
   Checkout.
@@ -36,6 +37,7 @@
                  testing. The server is the only validation that counts, since
                  a hand-written POST never runs the browser's. #}
               novalidate>
+          {{ csrf_field() }}
 
           <h2 class="section-title">Your details</h2>
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_image %}
+{% from "macros.html" import artwork_image, csrf_field %}
 
 {#
   The cart.
@@ -87,6 +87,7 @@
                 {% if art.status == "for-sale" and art.inventory_quantity > 1 %}
                   <form class="cart-line__quantity" method="post"
                         action="{{ url_for('cart_update') }}">
+                    {{ csrf_field() }}
                     <input type="hidden" name="artwork_id" value="{{ art.id }}">
                     <label class="visually-hidden" for="qty-{{ art.id }}">
                       Quantity of {{ art.title }} by {{ art.artist_name }}</label>
@@ -104,6 +105,7 @@
                 {% endif %}
 
                 <form method="post" action="{{ url_for('cart_remove') }}">
+                  {{ csrf_field() }}
                   <input type="hidden" name="artwork_id" value="{{ art.id }}">
                   <button class="button button--quiet button--small" type="submit">
                     Remove<span class="visually-hidden">

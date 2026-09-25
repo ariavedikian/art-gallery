@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
 
 {#
   The admin login.
@@ -31,6 +32,9 @@
       {% endif %}
 
       <form class="admin-login__form" method="post" action="{{ url_for('admin_login_submit') }}">
+        {# The login form too: otherwise another site could log a visitor in
+           to an account of ITS choosing ("login CSRF"). #}
+        {{ csrf_field() }}
         {# Where to go afterwards. safe_next() in app.py decides whether it
            is honoured, so nothing here needs to be trusted. #}
         <input type="hidden" name="next" value="{{ next }}">

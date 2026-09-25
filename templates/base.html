@@ -46,7 +46,9 @@
         <p>Signed in as <strong>{{ current_admin.username }}</strong></p>
         <a href="{{ url_for('admin_dashboard') }}">Collection</a>
         <a href="{{ url_for('admin_orders') }}">Orders</a>
+        {% from "macros.html" import csrf_field %}
         <form method="post" action="{{ url_for('admin_logout') }}">
+          {{ csrf_field() }}
           <button class="admin-bar__button" type="submit">Log out</button>
         </form>
       </div>

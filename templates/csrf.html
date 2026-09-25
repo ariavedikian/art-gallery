@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{#
+  Shown when a form arrives without this session's CSRF token (see
+  check_csrf in app.py). For a real visitor that almost always means the page
+  was open a long time, or their cookies were cleared, so the wording is
+  about what to do next, not about attacks. Nothing was changed.
+#}
+
+{% block title %}Please try again — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container prose">
+      <p class="eyebrow">403</p>
+      <h1 class="display">That form has expired.</h1>
+      <p class="lead">Nothing was changed. The page it came from was probably
+        open for a long time, or cookies were cleared since. Go back, reload
+        the page, and try again.</p>
+      <p>
+        <a class="button" href="{{ url_for('home') }}">Go to the homepage</a>
+      </p>
+    </div>
+  </section>
+
+{% endblock %}

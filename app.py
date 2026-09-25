@@ -1913,6 +1913,70 @@ def inject_site_globals():
     }
 
 
+# --- Cross-site request forgery ----------------------------------------------
+# A browser attaches this site's cookie to every request made TO this site --
+# including one started by a page on some other site. So a form on
+# evil.example, pointed at /admin/artworks/4/delete and submitted by a script,
+# would arrive carrying the admin's login, and look exactly like the admin
+# pressing Delete. That is cross-site request forgery (CSRF).
+#
+# SameSite=Lax asks the browser to leave the cookie off such requests, but it
+# is the browser's rule, and a site on a sibling subdomain counts as "same
+# site". This is our own check: every request that changes something must
+# carry a secret token that only pages from this site contain. Another site
+# can make the browser SEND a request, but cannot READ our pages, so it cannot
+# know the token.
+#
+# One token per session, not per form: two open tabs and the Back button keep
+# working. It is kept in the (signed) session, so nobody can plant a token
+# of their own choosing in someone else's browser.
+
+CSRF_KEY = "csrf"               # where the token lives in the session
+CSRF_FIELD = "csrf_token"       # the hidden form field that carries it
+CSRF_HEADER = "X-CSRF-Token"    # ...or this header, for fetch()
+
+# The methods that only read. Everything else must carry the token -- which is
+# also why every state change here is a POST: a GET cannot be protected.
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+
+
+@app.template_global()
+def csrf_token():
+    """This session's token, made the first time a page needs one."""
+    token = session.get(CSRF_KEY)
+    if not isinstance(token, str) or not token:
+        token = secrets.token_urlsafe(32)
+        session[CSRF_KEY] = token
+    return token
+
+
+@app.before_request
+def check_csrf():
+    """Refuse any request that changes something unless it carries the token.
+
+    before_request runs ahead of EVERY view, so a new POST route is protected
+    the day it is written, with nothing to remember.
+    """
+    if request.method in SAFE_METHODS:
+        return None
+
+    expected = session.get(CSRF_KEY)
+    sent = request.headers.get(CSRF_HEADER) or request.form.get(CSRF_FIELD)
+    if isinstance(expected, str) and expected and sent:
+        # As bytes: compare_digest refuses str with non-ASCII characters by
+        # raising TypeError, and a token typed as "é" must be a 403, not a 500.
+        if secrets.compare_digest(expected.encode(), sent.encode()):
+            return None
+
+    app.logger.warning("CSRF check failed: %s %s", request.method, request.path)
+    # 403 Forbidden: the request may be perfectly well-formed; it is refused
+    # because nothing shows it came from one of our own pages.
+    if request.path.startswith("/api/"):
+        return api_error(403, "Missing or wrong CSRF token. Reload the page "
+                              "and try again.")
+    return render_template("csrf.html"), 403
+
+
 # --- Routes ------------------------------------------------------------------
 
 @app.route("/")
@@ -2325,8 +2389,9 @@ def api_cart_add():
     get_json(silent=True) returns None, rather than raising, when the body is
     not JSON or not labelled as JSON. Requiring the JSON label has a side
     benefit: an ordinary HTML form on another website cannot send it, so this
-    endpoint is not reachable by the simplest cross-site trick. Cross-site
-    request forgery in general is Stage 20.
+    endpoint is not reachable by the simplest cross-site trick. The real
+    defence is check_csrf, which runs before this: cart.js sends the page's
+    token in the X-CSRF-Token header.
     """
     data = request.get_json(silent=True)
     if not isinstance(data, dict):

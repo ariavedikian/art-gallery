@@ -77,7 +77,10 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json"
+          "Accept": "application/json",
+          // The CSRF token, taken from the hidden field of the very form
+          // being enhanced: the same proof the plain form would have sent.
+          "X-CSRF-Token": form.elements.csrf_token.value
         },
         body: JSON.stringify(body)
         // No credentials option needed: fetch sends cookies to its own site by

@@ -10,6 +10,19 @@
 
 
 {#
+  The CSRF token, as a hidden field. EVERY method="post" form needs it: the
+  server refuses a POST without it (check_csrf in app.py), and
+  tests/test_csrf.py fails if a form on any page is missing it -- or if a GET
+  form has it, since a GET puts its fields in the URL, where a token leaks
+  into history, logs and Referer headers.
+
+  csrf_token() is a Jinja global, which an imported macro can call even
+  though imports do not see the page's other variables.
+#}
+{% macro csrf_field() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+
+{#
   Price and availability, worked out from the two facts the database stores:
 
     available_for_purchase  is it offered for sale at all?

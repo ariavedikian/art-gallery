@@ -25,8 +25,41 @@ os.environ["ART_GALLERY_ENV"] = "development"
 os.environ["ART_GALLERY_SECRET_KEY"] = secrets.token_hex(32)
 
 import app  # noqa: E402  (the path and environment must be set first)
+from flask.testing import FlaskClient  # noqa: E402
 
 DATABASE_DIR = PROJECT_ROOT / "database"
+
+
+class PageClient(FlaskClient):
+    """A test client that behaves like a browser on OUR pages.
+
+    Every page with a form carries this session's CSRF token, and cart.js
+    sends it as a header. A test is about the route it posts to, not about
+    loading a page first, so this client does what a page would have done:
+    it takes the session's token (making one if the session has none yet)
+    and sends it as the X-CSRF-Token header with every POST.
+
+    csrf=False sends the request WITHOUT it -- what another website's form
+    would do. tests/test_csrf.py uses that, and checks the hidden fields in
+    the real pages, which this client does not.
+    """
+
+    def open(self, *args, csrf=True, **kwargs):
+        method = str(kwargs.get("method", "GET")).upper()
+        if csrf and method not in app.SAFE_METHODS:
+            # The same host as the request, so the right cookie is read.
+            where = {"base_url": kwargs["base_url"]} if "base_url" in kwargs else {}
+            with self.session_transaction(**where) as session:
+                token = session.get(app.CSRF_KEY)
+                if not token:
+                    token = session[app.CSRF_KEY] = secrets.token_urlsafe(32)
+            headers = dict(kwargs.pop("headers", None) or {})
+            headers.setdefault(app.CSRF_HEADER, token)
+            kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
+app.app.test_client_class = PageClient
 
 
 @contextmanager

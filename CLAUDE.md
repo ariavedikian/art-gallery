@@ -236,8 +236,8 @@ styling, cluttered layouts.
 - **Business rules apply to the API too.** No price for a work that is not
   for sale, in JSON exactly as on the page.
 - **API errors are JSON with honest status codes**: 400 malformed, 404 not
-  found, 405 wrong method (with `Allow`), 409 refused by the work's state,
-  413 too large.
+  found, 403 no CSRF token, 405 wrong method (with `Allow`), 409 refused by
+  the work's state, 413 too large.
   Outside `/api/` errors stay HTML.
 - **JSON types are checked, not coerced.** `"2"` is not `2`, and `true` is not
   `1` even though Python's `bool` is an `int`.
@@ -274,7 +274,20 @@ styling, cluttered layouts.
 - **Admin responses are `Cache-Control: no-store`**, and admin pages carry
   `noindex`. The public site never links to `/admin`.
 - **The session cookie is `SameSite=Lax`**, set explicitly rather than trusted
-  to browser defaults. Full CSRF protection is Stage 20.
+  to browser defaults. It is the browser's rule and ignores ports and
+  sibling subdomains ("same site"); the CSRF token below is our own check.
+- **Every POST carries this session's CSRF token.** `check_csrf` is a
+  `before_request` for every method outside `SAFE_METHODS`, so a new route
+  is protected without remembering to. The token (one per session, made by
+  the `csrf_token()` Jinja global) travels in the `csrf_token` hidden field
+  (`csrf_field()` in macros.html, in every `method="post"` form and never
+  a GET form) or the `X-CSRF-Token` header (cart.js reads it from the form
+  it enhances). Compared as bytes with `compare_digest` (a non-ASCII str
+  would raise). A refusal is a 403 (`csrf.html`, or JSON under /api/) and
+  is logged. In tests, `support.PageClient` sends the token the way a page
+  would; `csrf=False` sends a request as another site would.
+  `tests/test_csrf.py` walks every POST route: refused without the token
+  and unchanged, accepted with it.
 - **Money typed by a person goes through `Decimal`, never `float`.**
   `parse_price()` checks the text against a strict pattern first, then converts
   exactly; `float("19.99") * 100` lands a cent short. Price fields are
@@ -467,10 +480,6 @@ styling, cluttered layouts.
 
 **Going into Stage 20 (security), already known:**
 
-- No CSRF tokens yet; only `SameSite=Lax`. POST forms live in base.html
-  (logout), artwork.html and cart.html (cart), checkout.html, and the admin
-  templates (login, artwork form, delete, ship); `/api/cart` takes JSON
-  via fetch().
 - Login has no rate limit (Part 5).
 - Uploads are served by extension from static/ (the extension comes from
   the decoded format, never the upload's name).
@@ -551,6 +560,7 @@ python tests/test_performance.py
 python tests/test_input.py
 python tests/test_output.py
 python tests/test_sessions.py
+python tests/test_csrf.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -584,7 +594,7 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
-│                  #   checkout, order, orders, 404, 413, macros;
+│                  #   checkout, order, orders, 404, 413, csrf, macros;
 │                  #   admin/ holds login, dashboard, artwork_form,
 │                  #   artwork_delete, orders
 ├── static/           # css/style.css, js/{lightbox,filter,cart,nav}.js,
@@ -719,7 +729,13 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       revocable admin sessions (`admins.session_key`, schema version 2)
       with a 12-hour limit. `tests/test_sessions.py` replays the audit's
       forged-cookie and copied-cookie attacks.
-      **Part 4:** CSRF tokens on every POST and on `/api/cart`.
+      **Part 4 (done):** a CSRF token on every POST: `check_csrf` before
+      every request, `csrf_field()` in all nine forms, the header from
+      cart.js, a 403 page. `tests/test_csrf.py` sends each of the 11 POST
+      routes a request that would succeed, without and then with the
+      token. In a browser, a form on another port posted to /cart/add WITH
+      the gallery's cookie (same site to SameSite) and only the token
+      refused it.
       **Part 5:** login throttling, trusted hosts, the mock payment off
       outside development, payment security design for Stage 14.
 - [ ] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean
