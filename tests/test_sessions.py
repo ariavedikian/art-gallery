@@ -130,7 +130,8 @@ def production(results):
 
     try:
         app.configure({"ART_GALLERY_ENV": "production",
-                       "ART_GALLERY_SECRET_KEY": app.app.secret_key})
+                       "ART_GALLERY_SECRET_KEY": app.app.secret_key,
+                       "ART_GALLERY_HOSTS": "gallery.example"})
         visitor = app.app.test_client()
         response = visitor.post("/cart/add", data={"artwork_id": "2"},
                                 base_url="https://gallery.example")

@@ -40,9 +40,10 @@ from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 import click
-from flask import (Flask, abort, flash, g, redirect, render_template, request,
-                   session, url_for)
+from flask import (Flask, abort, flash, g, make_response, redirect,
+                   render_template, request, session, url_for)
 from PIL import Image, ImageOps
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -59,13 +60,30 @@ HERO = {
     "alt": "Placeholder hero image",
 }
 
+# A whole number from a form, a URL or the environment is ASCII digits and
+# nothing else. str.isdigit() is NOT this test: it is true for "²"
+# (superscript two), which int() then refuses with a crash, and for "٣",
+# which int() quietly reads as 3. Defined up here because configure(), just
+# below, already needs it.
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def is_digits(text):
+    """True if text is one or more ASCII digits, and nothing else."""
+    return _DIGITS.fullmatch(text) is not None
+
+
 # --- Configuration from the environment ---------------------------------------
-# Two environment variables, both optional on your own machine:
+# Four environment variables, all optional on your own machine:
 #
 #   ART_GALLERY_ENV         "production" on a real server; unset (or
 #                           "development") everywhere else
 #   ART_GALLERY_SECRET_KEY  the key that signs session cookies; required in
 #                           production, at least MIN_SECRET_KEY_LENGTH long
+#   ART_GALLERY_HOSTS       the site's domain names, comma-separated; required
+#                           in production (default: localhost, 127.0.0.1)
+#   ART_GALLERY_PROXIES     how many proxies stand in front of the app
+#                           (default 0); the hosting provider says
 #
 # The secret key is what makes the session cookie trustworthy. Signing is not
 # encryption: a visitor can READ their cookie, they just cannot change it, or
@@ -147,6 +165,40 @@ def configure(environ=os.environ, instance_path=None):
     # other subdomain of the site's domain can plant or overwrite it.
     app.config["SESSION_COOKIE_NAME"] = "__Host-session" if production else "session"
 
+    # The names this site answers to. The Host header is written by the
+    # client, and url_for(..., _external=True) builds absolute URLs from it:
+    # the API's links, and at Stage 14 the address Stripe sends a buyer back
+    # to. Any other Host is a 400 before our code runs. In development the
+    # default also stops "DNS rebinding", where a web page makes its own
+    # domain point at 127.0.0.1 to reach a server running on your machine.
+    hosts = [host.strip() for host in environ.get("ART_GALLERY_HOSTS", "").split(",")
+             if host.strip()]
+    if production and not hosts:
+        raise RuntimeError("ART_GALLERY_ENV is production but ART_GALLERY_HOSTS "
+                           "(the site's domain names, comma-separated) is not set.")
+    app.config["TRUSTED_HOSTS"] = hosts or ["localhost", "127.0.0.1"]
+
+    # How many proxies stand in front of the app. Behind one, every request
+    # arrives FROM the proxy, and the visitor's address is in the
+    # X-Forwarded-For header the proxy adds. That header is only believed
+    # when we say a proxy is there: otherwise any client could write it and
+    # pick an IP address, and the login throttle counts by address.
+    proxies = environ.get("ART_GALLERY_PROXIES", "0").strip()
+    if not is_digits(proxies):
+        raise RuntimeError(f"ART_GALLERY_PROXIES is {proxies!r}; use a whole number.")
+    proxies = int(proxies)
+    app.wsgi_app = (ProxyFix(_plain_wsgi_app, x_for=proxies, x_proto=proxies)
+                    if proxies else _plain_wsgi_app)
+
+    # The labelled mock checkout (Stage 12) takes no money: in production it
+    # would hand out art for free. Off there until payments.py (Stage 14)
+    # replaces it; checkout says purchases open soon instead.
+    app.config["MOCK_PAYMENTS"] = not production
+
+
+# The app exactly as Flask built it, before any ProxyFix. configure() can run
+# more than once (the tests do), so it wraps THIS, never an earlier wrapping.
+_plain_wsgi_app = app.wsgi_app
 
 configure()
 
@@ -161,7 +213,7 @@ DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
 
 # The schema this code was written against: the PRAGMA user_version that
 # schema.sql writes into the file. The two change together.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Database files already found to be the right version, so the check costs
 # one statement per file per process rather than one per request.
@@ -878,6 +930,13 @@ def place_order(lines, values, payment_approved):
     except block undoes every change made so far, so a failed checkout leaves
     the database exactly as it was.
     """
+    # The second lock. The checkout routes already refuse in production, but
+    # this is the function that writes a 'paid' order for no money, so it
+    # refuses too: a route added later cannot reach it by forgetting the first.
+    if not app.config["MOCK_PAYMENTS"]:
+        raise RuntimeError("Mock payments are off (production). Orders need "
+                           "real payments first: payments.py, Stage 14.")
+
     db = get_db()
 
     # IMMEDIATE takes the write lock now, rather than at the first write. Two
@@ -1136,6 +1195,68 @@ def safe_next(target):
     return url_for("admin_dashboard")
 
 
+# --- Admin: the login throttle -----------------------------------------------
+# The login form is the one place anyone on the internet can test passwords
+# against the real hash. The hash is slow, which makes each guess cost the
+# server time -- but nothing stopped the next guess. Now recent failures are
+# counted (in login_failures), and past a limit the form answers 429 Too Many
+# Requests without checking the password at all.
+#
+# Counted two ways, because each alone has a hole:
+#   per IP address   stops one machine guessing; a tight limit
+#   per username     bounds guesses spread over many machines; a looser one,
+#                    because anyone who knows the username can spend it, and
+#                    reaching it locks the real admin out too, until the
+#                    window passes or `flask create-admin` sets a new password
+#
+# The check and the insert are separate statements, so two guesses arriving
+# at the same instant can both slip under the limit by one. Unlike stock,
+# where one extra sale is a real problem, one extra guess changes nothing,
+# so the gap is accepted rather than locked.
+
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_LIMIT_PER_IP = 10
+LOGIN_LIMIT_PER_USERNAME = 50
+
+
+def _wait_after(row):
+    """Seconds until the failure in row leaves the window, if there is one."""
+    if row is None:
+        return 0
+    return row["failed_at"] + LOGIN_WINDOW_SECONDS - int(time.time())
+
+
+def login_wait(ip, username):
+    """How many seconds this login attempt must wait, or 0 to go ahead.
+
+    OFFSET limit-1 fetches the limit-th most recent failure in the window. If
+    there is one, the limit has been reached, and the wait is until THAT one
+    ages out -- at which point the count drops back under the limit.
+    """
+    since = int(time.time()) - LOGIN_WINDOW_SECONDS
+    by_ip = query_db("""
+        SELECT failed_at FROM login_failures
+         WHERE ip = ? AND failed_at > ?
+         ORDER BY failed_at DESC LIMIT 1 OFFSET ?
+    """, (ip, since, LOGIN_LIMIT_PER_IP - 1), one=True)
+    by_username = query_db("""
+        SELECT failed_at FROM login_failures
+         WHERE username = ? AND failed_at > ?
+         ORDER BY failed_at DESC LIMIT 1 OFFSET ?
+    """, (username, since, LOGIN_LIMIT_PER_USERNAME - 1), one=True)
+    return max(_wait_after(by_ip), _wait_after(by_username))
+
+
+def record_login_failure(ip, username):
+    """Count one failed login, and forget failures too old to matter."""
+    now = int(time.time())
+    db = get_db()
+    db.execute("DELETE FROM login_failures WHERE failed_at <= ?",
+               (now - LOGIN_WINDOW_SECONDS,))
+    db.execute("INSERT INTO login_failures (ip, username, failed_at) VALUES (?, ?, ?)",
+               (ip, username, now))
+
+
 @functools.cache
 def _dummy_hash():
     """A real hash of nothing in particular, computed once and then reused.
@@ -1187,6 +1308,10 @@ def set_admin_password(username, password):
         db.execute("UPDATE admins SET password_hash = ?, session_key = ? "
                    "WHERE username = ?",
                    (password_hash, new_session_key(), username))
+
+    # A new password is also the way out of a username lockout (see the login
+    # throttle): the failures counted against the old one no longer apply.
+    db.execute("DELETE FROM login_failures WHERE username = ?", (username,))
 
 
 # --- Admin: editing the collection -------------------------------------------
@@ -1261,16 +1386,6 @@ TEXT_LIMITS = {"title": 200, "year": 40, "medium": 120, "category": 60,
 # Arabic-Indic "٣" and dozens of others, and Decimal would happily read them.
 # A price is typed on a keyboard in ASCII; anything else is refused.
 _PRICE_PATTERN = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
-
-# The same rule for whole numbers. str.isdigit() is NOT this test: it is true
-# for "²" (superscript two), which int() then refuses with a crash, and for
-# "٣", which int() quietly reads as 3. A number from a form is 0-9 or nothing.
-_DIGITS = re.compile(r"[0-9]+")
-
-
-def is_digits(text):
-    """True if text is one or more ASCII digits, and nothing else."""
-    return _DIGITS.fullmatch(text) is not None
 
 # The columns the CMS writes, in one list shared by INSERT and UPDATE so the
 # two can never disagree. These are names WE wrote, so building the SQL from
@@ -2175,8 +2290,17 @@ def _checkout_blocker(lines):
     return None
 
 
+def checkout_closed():
+    """The answer to checkout while there is no real payment (production,
+    before Stage 14). 503 Service Unavailable: the page exists, the service
+    behind it is not running yet."""
+    return render_template("checkout_closed.html"), 503
+
+
 @app.get("/checkout")
 def checkout():
+    if not app.config["MOCK_PAYMENTS"]:
+        return checkout_closed()
     lines = get_cart_lines()
 
     blocker = _checkout_blocker(lines)
@@ -2202,6 +2326,8 @@ def checkout_submit():
     typing away. A SUCCESSFUL order redirects, so a reload cannot place a
     second one. Redirect on success, re-render on failure.
     """
+    if not app.config["MOCK_PAYMENTS"]:
+        return checkout_closed()
     lines = get_cart_lines()
 
     blocker = _checkout_blocker(lines)
@@ -2460,16 +2586,33 @@ def admin_login_submit():
     # Too long to be anyone is treated exactly like "no such user": the dummy
     # hash below still runs, and the same message comes back. Only the cut
     # username is echoed into the page, never the whole of what was sent.
-    if len(username) > MAX_USERNAME_LENGTH:
-        username, admin = username[:MAX_USERNAME_LENGTH], None
-    else:
-        admin = get_admin_by_username(username) if username else None
+    too_long = len(username) > MAX_USERNAME_LENGTH
+    username = username[:MAX_USERNAME_LENGTH]
+
+    # Throttled: answer before looking anything up or checking the password,
+    # so a refused guess learns nothing -- not even whether it was right.
+    # remote_addr is the visitor's address (the proxy's, unless
+    # ART_GALLERY_PROXIES says one is there; see configure()).
+    ip = request.remote_addr or "unknown"
+    wait = login_wait(ip, username)
+    if wait:
+        minutes = -(-wait // 60)        # whole minutes, rounded up
+        response = make_response(render_template(
+            "admin/login.html", next=next_url, username=username,
+            error=f"Too many failed attempts. Try again in {minutes} "
+                  f"minute{'s' if minutes != 1 else ''}."), 429)
+        # Retry-After is the machine-readable version of the same sentence.
+        response.headers["Retry-After"] = str(wait)
+        return response
+
+    admin = None if too_long or not username else get_admin_by_username(username)
 
     # check_password_hash hashes what was typed the same way, with the same
     # salt, and compares. It also compares in constant time, so how long the
     # comparison takes does not reveal how many characters were right.
     stored = admin["password_hash"] if admin is not None else _dummy_hash()
     if not (check_password_hash(stored, password) and admin is not None):
+        record_login_failure(ip, username)
         # 400, like any rejected form. The username is sent back so it does
         # not have to be retyped; the password never is -- it should not
         # travel back to the browser inside a page.
@@ -3061,4 +3204,14 @@ def request_too_large(error):
 
 
 if __name__ == "__main__":
+    # `python app.py` is Werkzeug's development server with the interactive
+    # debugger: the traceback page whose console runs any Python you type.
+    # On your own machine it answers only 127.0.0.1 and asks for a PIN. On a
+    # server it would be a remote console. So production refuses to start
+    # this way at all; a real server runs the app under a production WSGI
+    # server (waitress on Windows, gunicorn on Linux), which has no debugger.
+    if app.config["PRODUCTION"]:
+        raise SystemExit("ART_GALLERY_ENV is production: `python app.py` is the "
+                         "development server. Run the app under a production "
+                         "WSGI server instead (for example: waitress-serve app:app).")
     app.run(debug=True, port=5000)

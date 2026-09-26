@@ -23,12 +23,13 @@ PRAGMA foreign_keys = ON;
 -- to run against an older build, naming the fix, rather than failing later
 -- with "no such column". Any change to a table, column or index here: add 1,
 -- and change SCHEMA_VERSION in app.py to match.
-PRAGMA user_version = 2;     -- 2: admins.session_key (Stage 20)
+PRAGMA user_version = 3;     -- 2: admins.session_key; 3: login_failures (Stage 20)
 
 
 -- Drop in reverse order of dependency: artworks points at artists, so it has
 -- to go first. Dropping artists while artworks still referenced it would be
 -- exactly the orphaned-reference problem these tables exist to prevent.
+DROP TABLE IF EXISTS login_failures;
 DROP TABLE IF EXISTS admins;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
@@ -275,3 +276,25 @@ CREATE TABLE admins (
 
     created_at    TEXT NOT NULL
 );
+
+
+-- --- login_failures ----------------------------------------------------------
+-- One row per failed admin login, for the throttle in app.py. Only the last
+-- LOGIN_WINDOW_SECONDS matter; older rows are deleted as new ones arrive, so
+-- the table stays small. A request refused BY the throttle writes nothing:
+-- it tested no password, and a flood of refusals must not grow the table.
+--
+-- username is whatever was typed, existing or not. Counting unknown names
+-- the same way means the throttle's behaviour never reveals which exist.
+-- No foreign key to admins, for that reason.
+CREATE TABLE login_failures (
+    id         INTEGER PRIMARY KEY,
+    ip         TEXT    NOT NULL,
+    username   TEXT    NOT NULL COLLATE NOCASE,
+    failed_at  INTEGER NOT NULL          -- Unix seconds
+);
+
+-- The throttle asks "how many recent failures for this IP?" and "...for this
+-- username?" on every login attempt: one index for each question.
+CREATE INDEX idx_login_failures_ip ON login_failures (ip, failed_at);
+CREATE INDEX idx_login_failures_username ON login_failures (username, failed_at);

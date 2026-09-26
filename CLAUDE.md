@@ -266,6 +266,30 @@ styling, cluttered layouts.
   a forger with the signing key still cannot guess it.
 - **One message for every failed login**, and a dummy hash check for unknown
   usernames, so neither the wording nor the timing reveals which exist.
+- **Failed logins are throttled**, counted in `login_failures` per IP
+  (`LOGIN_LIMIT_PER_IP`, 10) and per username (`LOGIN_LIMIT_PER_USERNAME`,
+  50) over `LOGIN_WINDOW_SECONDS` (15 min). Past either limit the form is a
+  429 with `Retry-After`, answered BEFORE the password is checked (a right
+  password is refused too, so a refused guess learns nothing), and the
+  refusal is not recorded (a flood cannot grow the table). Unknown usernames
+  are counted the same way. The username limit is looser because anyone
+  can spend it; `flask create-admin` (a new password) clears it. Check and
+  insert are separate statements: two simultaneous guesses may overshoot
+  by one, which is harmless, unlike stock.
+- **The client's address is `request.remote_addr`**, which ignores
+  `X-Forwarded-For` unless `ART_GALLERY_PROXIES` says how many proxies are
+  in front (then `ProxyFix`). Otherwise anyone could pick an address and
+  dodge the throttle. `configure()` wraps `_plain_wsgi_app`, never an earlier
+  wrapping, so it can run repeatedly.
+- **Only the site's own host names are answered** (`TRUSTED_HOSTS`, from
+  `ART_GALLERY_HOSTS`, required in production; localhost and 127.0.0.1 in
+  development). Any other Host header is a 400 before our code runs, so
+  `url_for(..., _external=True)` can never build a link to someone else's
+  domain. Add a LAN IP to `ART_GALLERY_HOSTS` to test on a phone.
+- **No mock payment in production** (`MOCK_PAYMENTS`). Checkout answers 503
+  "Purchases open soon" (`checkout_closed.html`), and `place_order()`
+  refuses on its own as a second lock. `python app.py` (the debug server,
+  whose traceback page is a Python console) refuses to start in production.
 - **`next=` is honoured only if it is a path on this site** (`safe_next()`):
   no scheme, no host, not `//`, no backslash. Otherwise, an open redirect.
 - **Logout is a POST**, ends every session of that admin (above), and only
@@ -451,9 +475,13 @@ styling, cluttered layouts.
   table on every parent DELETE. Queries per page are 1-5 and must not grow
   with the collection; `tests/test_performance.py` adds 30 works and checks.
 
-## Open items (as of 2026-09-24, HEAD 928bbef)
+## Open items (as of 2026-09-25, end of Stage 20)
 
 **Waiting on the owner:**
+
+- The owner's `database/art_gallery.db` was built before Stage 19 and is
+  refused by the schema version check (it needs version 3). Run
+  `python init_db.py --reset`, then `flask --app app create-admin <name>`.
 
 - An answer to the question left open since Stage 16: the admin edit form
   guards stock against lost updates but not price -- if two admins save the
@@ -478,11 +506,17 @@ styling, cluttered layouts.
   --reset`, which empties the admins and orders tables. Since Stage 20 a
   stale file is at least refused by name (schema version check).
 
-**Going into Stage 20 (security), already known:**
+**Left after Stage 20, deliberately (not bugs, not yet worth building):**
 
-- Login has no rate limit (Part 5).
+- No second factor for the admin login, and no record of which admin
+  changed what. Both matter once there is more than one admin.
+- Dependencies are pinned but not checked for known vulnerabilities; a
+  `pip-audit` run before deploying would do it.
 - Uploads are served by extension from static/ (the extension comes from
-  the decoded format, never the upload's name).
+  the decoded format, never the upload's name), with `nosniff`.
+- The throttle can lock the real admin out if an attacker sustains 50+
+  failures every 15 minutes against the username; `flask create-admin`
+  (new password) is the way back in.
 
 ## Deferred: Stage 14 (real payments)
 
@@ -527,6 +561,47 @@ Stripe's):
 - Stage 13 left the transition rules unwritten on purpose. Stage 14 writes
   the ones the webhook performs: `pending → paid`, `pending → cancelled`.
 
+**Security design, worked out in Stage 20** (what the Stage 20 code already
+does, and what `payments.py` must respect; check the details against
+Stripe's current docs, which are the authority on their side):
+
+- *Card data never touches this site.* Use Stripe's hosted Checkout page (a
+  redirect), not a card form of our own. Card numbers are then typed only
+  into Stripe's page, which keeps the site out of the card-handling rules
+  almost entirely, and needs no Stripe script in our pages -- so the CSP
+  stays as it is, except the next point.
+- *CSP:* the checkout POST will redirect the browser to Stripe. Chrome
+  applies `form-action` to where a form submission is redirected, so add
+  Stripe's checkout host to `form-action` in `CONTENT_SECURITY_POLICY`, and
+  watch the browser console for any other violation the first time.
+- *Amounts come from our database only.* Build Stripe's line items from
+  `get_cart_lines()` -- prices read fresh from SQL -- never from anything in
+  the request. The same rule as the cart since Stage 11.
+- *The return address is built from the Host header* (`url_for(...,
+  _external=True)` for success and cancel URLs). `TRUSTED_HOSTS` (Part 5)
+  is what stops a forged Host from sending a buyer to another domain, and
+  `ART_GALLERY_PROXIES` makes the scheme https behind a proxy.
+- *The webhook cannot carry our CSRF token* -- Stripe is not one of our
+  pages. Its protection is Stripe's signature instead: verify the
+  `Stripe-Signature` header against the raw body (`request.get_data()`,
+  before any parsing) with the endpoint's signing secret, and refuse
+  anything that fails. That needs an explicit exemption in `check_csrf`
+  (a `CSRF_EXEMPT` set holding that one endpoint), and `tests/test_csrf.py`
+  must then check that the exempt set is exactly that endpoint, and that
+  the endpoint refuses a bad signature. Never a blanket `/webhooks/` rule.
+- *Before marking an order paid, check the event matches it:* the order
+  reference, the amount and the currency, against our own row.
+- *Duplicates are harmless by construction*: the status-guarded UPDATE
+  above changes 0 rows the second time. Answer 2xx anyway, or Stripe
+  retries.
+- *Keys live in the environment* (`.env` is gitignored), are refused in
+  code unless they are test keys (`sk_test_`), and are never logged or put
+  in a template. Nor are full webhook payloads logged: they hold the
+  buyer's name and address.
+- *`MOCK_PAYMENTS` stays for development.* payments.py replaces the mock
+  step inside the order flow; keep `place_order()`'s refusal in production
+  for the mock path.
+
 ## Running it
 
 ```powershell
@@ -535,9 +610,17 @@ cd "C:\Users\ariav\ICS\Claude Projects\art-gallery"
 python app.py          # http://127.0.0.1:5000
 ```
 
-The first run creates `instance/secret_key` (gitignored). On a real server,
-set `ART_GALLERY_ENV=production` and `ART_GALLERY_SECRET_KEY` (make one with
-`python -c "import secrets; print(secrets.token_hex(32))"`) instead.
+The first run creates `instance/secret_key` (gitignored). On a real server
+set, instead:
+
+- `ART_GALLERY_ENV=production`
+- `ART_GALLERY_SECRET_KEY` (make one with
+  `python -c "import secrets; print(secrets.token_hex(32))"`)
+- `ART_GALLERY_HOSTS` (the domain names, comma-separated)
+- `ART_GALLERY_PROXIES` (how many proxies are in front, if any)
+
+and run it under a production WSGI server, never `python app.py`, which
+refuses to start in production.
 
 `venv/` is disposable and gitignored; rebuild with
 `python -m venv venv` then `pip install -r requirements.txt`.
@@ -561,6 +644,7 @@ python tests/test_input.py
 python tests/test_output.py
 python tests/test_sessions.py
 python tests/test_csrf.py
+python tests/test_protection.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -594,7 +678,8 @@ art-gallery/
 ├── CLAUDE.md         # this file
 ├── README.md         # how to run it
 ├── templates/        # base, index, gallery, artist, artwork, cart,
-│                  #   checkout, order, orders, 404, 413, csrf, macros;
+│                  #   checkout, checkout_closed, order, orders, 404,
+│                  #   413, csrf, macros;
 │                  #   admin/ holds login, dashboard, artwork_form,
 │                  #   artwork_delete, orders
 ├── static/           # css/style.css, js/{lightbox,filter,cart,nav}.js,
@@ -705,7 +790,7 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       Found, not in scope: artist portraits' width/height are still typed
       into two templates (800x1000), so a real portrait at Stage 21 would
       need a template change; the API does not expose alt text.
-- [~] **20 — Security basics.** Input validation, SQL injection, output
+- [x] **20 — Security basics.** Input validation, SQL injection, output
       escaping, sessions, CSRF, protecting admin, payment architecture.
       Audited first by attacking a throwaway copy (11 findings; the worst: a
       cookie signed with the committed fallback key opens /admin). Split in
@@ -736,8 +821,16 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       token. In a browser, a form on another port posted to /cart/add WITH
       the gallery's cookie (same site to SameSite) and only the token
       refused it.
-      **Part 5:** login throttling, trusted hosts, the mock payment off
-      outside development, payment security design for Stage 14.
+      **Part 5 (done):** login throttling per IP and per username
+      (`login_failures`, schema version 3), `TRUSTED_HOSTS`, `ProxyFix`
+      only when declared, no mock payment in production (route and
+      `place_order()`), the debug server refused in production, and the
+      payment security design for Stage 14 (below).
+      `tests/test_protection.py`. Checked in a browser against a
+      production-mode server: the `__Host-` Secure cookie works on
+      http://localhost (Chrome counts it as secure), checkout is 503,
+      127.0.0.1 is refused as an untrusted host, and the 11th login shows
+      the throttle message.
 - [ ] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean
       Carzou. Verified sources only. Architecture should not change.
 - [ ] **22 — Final refactor.** Duplication, naming, dead code, query

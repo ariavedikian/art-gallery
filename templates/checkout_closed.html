@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{#
+  Checkout in production before real payments exist (Stage 14). The mock
+  checkout takes no money, so it is switched off there (MOCK_PAYMENTS in
+  app.py) and this page is shown instead. The cart itself keeps working.
+#}
+
+{% block title %}Purchases open soon — {{ gallery_name }}{% endblock %}
+
+{% block content %}
+
+  <section class="section">
+    <div class="container prose">
+      <p class="eyebrow">Checkout</p>
+      <h1 class="display">Purchases open soon.</h1>
+      <p class="lead">Works cannot be bought online yet. Your cart is kept in
+        this browser, so nothing in it is lost.</p>
+      <p>
+        <a class="button" href="{{ url_for('cart') }}">Back to your cart</a>
+      </p>
+    </div>
+  </section>
+
+{% endblock %}
