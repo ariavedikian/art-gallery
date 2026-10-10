@@ -78,7 +78,9 @@
           {{ form_field("year", "Date", values.year, errors,
                         hint="Optional. Free text, since art dates can be approximate: c. 1955, 1962–63.",
                         maxlength=40) }}
-          {{ form_field("medium", "Medium", values.medium, errors, maxlength=120) }}
+          {{ form_field("medium", "Medium", values.medium, errors,
+                        hint="Optional. Leave blank if it is not verified.",
+                        maxlength=120) }}
 
           {# list= ties the field to the <datalist> below: the browser offers
              the categories already in use, which keeps "Painting" from
@@ -92,7 +94,7 @@
           </datalist>
 
           {{ form_field("description", "Description", values.description, errors,
-                        type="textarea") }}
+                        hint="Optional.", type="textarea") }}
         </fieldset>
 
         <fieldset class="admin-form__group">

@@ -60,7 +60,7 @@
                 <td>
                   <a class="work-title" href="{{ url_for('artwork_page', artwork_id=art.id) }}">{{ art.title }}</a>
                   <span class="muted small admin-table__sub">
-                    #{{ art.id }} · {{ art.artist_name }} · {{ art.medium }}
+                    {{ ["#" ~ art.id, art.artist_name, art.medium] | select | join(" · ") }}
                   </span>
                 </td>
                 <td>

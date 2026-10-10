@@ -87,6 +87,20 @@ styling, cluttered layouts.
   connection. SQLite does not enforce them otherwise.
 - **SQLite has no BOOLEAN or DATE type.** Use 0/1 for flags and ISO text
   for dates. Artwork `year` is TEXT, since art dates can be approximate.
+- **An unknown fact is NULL, and the page shows nothing for it.** Facts a
+  real record may lack are nullable (artists: `lifespan`, `summary`, `bio`;
+  artworks: `year`, `medium`, `description`, `dimensions`, `edition`,
+  `inscriptions`); a blank admin field is stored as NULL, never `''`.
+  Three layers: `app.jinja_env.finalize` prints None as nothing (it once
+  printed "None", and `data-year="None"` reached the lightbox); a labelled
+  fact goes through the `detail(label, value)` macro, which leaves out the
+  whole row; a list of facts is `[a, b] | select | join(", ")`, so a
+  missing one takes its comma with it (`filter(Boolean)` in lightbox.js).
+  `tests/test_unknown_facts.py` blanks every optional fact and parses each
+  page for "None", empty `<p>`/`<dd>`/`<dt>`, and stranded separators.
+- **Stock is not an edition.** `inventory_quantity` is how many copies the
+  gallery has ("Available: 12 copies"); `edition` is which impression a
+  print is ("23/150"). The artwork page used to label stock "Edition".
 - **Sorting and filtering belong in SQL**, not in Jinja or Python. Which
   works appear and in what order is decided by the query; templates only
   decide how a work looks.
@@ -533,13 +547,15 @@ styling, cluttered layouts.
 
 **Stage 21 audit findings still to fix:**
 
-- An unknown fact renders as the word "None": a NULL `year` shows
-  "Date: None" on four pages and `data-year="None"` for the lightbox; a NULL
-  `lifespan` too. Reachable today (the admin saves a work without a year).
-  `summary`, `bio`, `portrait`, `medium`, `description` are NOT NULL, so an
-  unverified fact cannot be left out yet. (Part 2)
 - The placeholder SVGs have names drawn in ("ARTIST ONE", "ARTWORK ONE"), so
-  a real row cannot point at them. (Part 2)
+  a real row cannot point at them. A neutral "image not available" picture
+  comes in Part 3, with a rule for its alt text (the "<title> by <artist>"
+  fallback would claim the neutral picture shows the work).
+- `dimensions`, `edition` and `inscriptions` are not in the admin form, on
+  purpose: cited facts are edited in `database/seed.sql`. (The form still
+  edits title, date, medium and description; whether the admin should keep
+  editing facts at all is a question for Part 5.) Nor are they in the API:
+  its contract was left unchanged.
 - *Things placeholders hid:* portraits' 800x1000 is typed into
   `index.html` and `artist.html` (see Known gaps); `GALLERY_NAME` and
   `HERO` in app.py; real alt text for every real image; the header's 64em
@@ -705,6 +721,7 @@ python tests/test_output.py
 python tests/test_sessions.py
 python tests/test_csrf.py
 python tests/test_protection.py
+python tests/test_unknown_facts.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -900,12 +917,20 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       sweeps. Proved on throwaway copies: a content edit to
       `database/seed.sql` broke 3 test files before and none after; the
       same edit to `tests/seed.sql` breaks 6.
-      **Part 2:** room for the unknown (schema v4): optional fields, missing
-      facts rendered as nothing, a neutral "image not available" picture,
-      `dimensions`/`edition`/`inscriptions`, an honest stock label.
+      **Part 2 (done):** room for the unknown (schema v4): `summary`, `bio`,
+      `medium`, `description` nullable; `dimensions`, `edition`,
+      `inscriptions` added; unknowns shown as nothing (`finalize`, the
+      `detail` macro, `select | join`, the lightbox caption); stock
+      labelled "Available: N copies". `tests/test_unknown_facts.py`, written
+      first: 18 failures on the old code; each fix removed in a throwaway
+      copy is caught (no `finalize`: `data-year="None"` on four pages; a
+      `detail` that always writes its row: empty `<dd>`s). Checked in a
+      browser: the lightbox caption and hidden description, no CSP errors,
+      no overflow at 320px with the longer labels.
       **Part 3:** sources and citation tables (schema v5), a content test,
-      sources on the pages; `database/seed.sql` becomes the two artists'
-      names and lifespans, cited to ADAGP, and no works.
+      sources on the pages, the neutral "image not available" picture (moved
+      from Part 2, where nothing used it yet); `database/seed.sql` becomes
+      the two artists' names and lifespans, cited to ADAGP, and no works.
       **Part 4:** artist research: candidate facts with sources, the owner
       approves, bios written from approved facts only.
       **Part 5:** the owner's works: photos transcribed, candidates with

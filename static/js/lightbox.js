@@ -107,8 +107,13 @@
     view.image.src = work.image;
     view.image.alt = work.alt;
     view.title.textContent = work.title;
-    view.meta.textContent = work.artist + ", " + work.year + " · " + work.medium;
+    // Only the facts this work has. An unknown date or medium arrives as an
+    // empty data- attribute, and filter(Boolean) drops it along with its
+    // separator -- the same rule as `| select | join` in the templates.
+    view.meta.textContent = [work.artist, work.year].filter(Boolean).join(", ") +
+      (work.medium ? " · " + work.medium : "");
     view.description.textContent = work.description;
+    view.description.hidden = !work.description;
     view.link.href = work.href;
     view.count.textContent = (index + 1) + " of " + works.length;
 

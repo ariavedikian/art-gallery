@@ -51,8 +51,8 @@
                 <h2 class="heading work-title">
                   <a href="{{ url_for('artwork_page', artwork_id=art.id) }}">{{ art.title }}</a>
                 </h2>
-                <p class="muted small">{{ art.artist_name }}, {{ art.year }}</p>
-                <p class="muted small">{{ art.medium }}</p>
+                <p class="muted small">{{ [art.artist_name, art.year] | select | join(", ") }}</p>
+                {% if art.medium %}<p class="muted small">{{ art.medium }}</p>{% endif %}
 
                 {#
                   The issue was worked out in Python, on this request, from

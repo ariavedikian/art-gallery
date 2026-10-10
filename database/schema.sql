@@ -23,7 +23,8 @@ PRAGMA foreign_keys = ON;
 -- to run against an older build, naming the fix, rather than failing later
 -- with "no such column". Any change to a table, column or index here: add 1,
 -- and change SCHEMA_VERSION in app.py to match.
-PRAGMA user_version = 3;     -- 2: admins.session_key; 3: login_failures (Stage 20)
+PRAGMA user_version = 4;     -- 2: admins.session_key; 3: login_failures (Stage 20)
+                             -- 4: optional facts, catalogue fields (Stage 21)
 
 
 -- Drop in reverse order of dependency: artworks points at artists, so it has
@@ -51,12 +52,15 @@ CREATE TABLE artists (
 
     name      TEXT NOT NULL,
 
-    -- No NOT NULL: a record without dates is allowed. NULL means "unknown",
-    -- which is different from an empty string meaning "deliberately blank".
+    -- No NOT NULL on the facts: a record may lack any of them. NULL means
+    -- "unknown" -- nobody has verified it -- which is different from an empty
+    -- string meaning "deliberately blank". An unverified fact stays out
+    -- (Stage 21) rather than being typed in to satisfy the database, and
+    -- the pages show nothing at all in its place.
     lifespan  TEXT,
+    summary   TEXT,
+    bio       TEXT,
 
-    summary   TEXT NOT NULL,
-    bio       TEXT NOT NULL,
     portrait  TEXT NOT NULL,     -- path under static/images/
 
     -- What the portrait shows, for someone who cannot see it: the image's
@@ -86,9 +90,21 @@ CREATE TABLE artworks (
     -- range ("1962-63"). Store what is true rather than what is tidy.
     year          TEXT,
 
-    medium        TEXT NOT NULL,      -- "Oil on Canvas", "Lithograph", ...
+    -- Facts about the object, each NULL until verified (see artists.lifespan).
+    medium        TEXT,               -- "Oil on Canvas", "Lithograph", ...
     category      TEXT NOT NULL,      -- broader grouping, used for filtering
-    description   TEXT NOT NULL,
+    description   TEXT,
+
+    -- What a catalogue entry records about the object, written as the source
+    -- gives it, since sources write them differently:
+    --   dimensions    "65 x 50 cm", "sheet 76 x 56 cm"
+    --   edition       which impression of a print this is: "23/150", "E.A."
+    --                 (an artist's proof). A fact about THIS object, not how
+    --                 many the gallery has: that is inventory_quantity.
+    --   inscriptions  what is written on it: "Signed lower right"
+    dimensions    TEXT,
+    edition       TEXT,
+    inscriptions  TEXT,
 
     -- Whole cents, never a decimal: 0.1 + 0.2 is not 0.3 in binary floats.
     -- CHECK is a rule the database enforces; a negative price is rejected.
@@ -99,7 +115,8 @@ CREATE TABLE artworks (
     --   available_for_purchase  Is this piece offered for sale at all?
     --                           0 for display-only, loaned or not-for-sale work.
     --   inventory_quantity      How many are left? 1 for a unique original,
-    --                           30 for an edition of prints, 0 when sold out.
+    --                           12 for twelve copies of the same print, 0
+    --                           when sold out.
     --
     -- "Sold" on the website is a CONCLUSION drawn from these two
     -- (for sale, but none left), not a fact stored on its own. Storing a

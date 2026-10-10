@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, artwork_image, csrf_field, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, csrf_field, detail, price_status %}
 
 {#
   One artwork, in detail. The route fetches a single row and passes it in as
@@ -40,14 +40,20 @@
               <dt>Artist</dt>
               <dd><a href="{{ url_for('artist_page', slug=artwork.artist_slug) }}">{{ artwork.artist_name }}</a></dd>
             </div>
-            <div><dt>Date</dt><dd>{{ artwork.year }}</dd></div>
-            <div><dt>Medium</dt><dd>{{ artwork.medium }}</dd></div>
-            {% if artwork.available_for_purchase and artwork.inventory_quantity > 1 %}
-              <div><dt>Edition</dt><dd>{{ artwork.inventory_quantity }} available</dd></div>
+            {# Each row only when the fact is known: see detail() in macros. #}
+            {{ detail("Date", artwork.year) }}
+            {{ detail("Medium", artwork.medium) }}
+            {{ detail("Dimensions", artwork.dimensions) }}
+            {{ detail("Edition", artwork.edition) }}
+            {{ detail("Inscriptions", artwork.inscriptions) }}
+            {# Stock, labelled as stock. It used to say "Edition", but twelve
+               copies in stock says nothing about which impressions they are. #}
+            {% if artwork.status == "for-sale" and artwork.inventory_quantity > 1 %}
+              {{ detail("Available", artwork.inventory_quantity ~ " copies") }}
             {% endif %}
           </dl>
 
-          <p>{{ artwork.description }}</p>
+          {% if artwork.description %}<p>{{ artwork.description }}</p>{% endif %}
 
           {{ price_status(artwork) }}
 

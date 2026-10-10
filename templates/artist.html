@@ -36,9 +36,10 @@
         <div class="feature__body">
           <p class="eyebrow">Collection</p>
           <h1 class="display">{{ artist.name }}</h1>
-          <p class="muted small">{{ artist.lifespan }}</p>
-          <p class="lead">{{ artist.summary }}</p>
-          <p>{{ artist.bio }}</p>
+          {# Each only when known: an unverified fact stays out. #}
+          {% if artist.lifespan %}<p class="muted small">{{ artist.lifespan }}</p>{% endif %}
+          {% if artist.summary %}<p class="lead">{{ artist.summary }}</p>{% endif %}
+          {% if artist.bio %}<p>{{ artist.bio }}</p>{% endif %}
         </div>
       </div>
     </div>

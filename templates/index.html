@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, artwork_image, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, detail, price_status %}
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
 
@@ -61,8 +61,8 @@
           <div class="feature__body">
             <p class="eyebrow">{{ "%02d" | format(loop.index) }}</p>
             <h3 class="heading">{{ artist.name }}</h3>
-            <p class="muted small">{{ artist.lifespan }}</p>
-            <p>{{ artist.summary }}</p>
+            {% if artist.lifespan %}<p class="muted small">{{ artist.lifespan }}</p>{% endif %}
+            {% if artist.summary %}<p>{{ artist.summary }}</p>{% endif %}
             <a class="button button--quiet" href="{{ collection_url }}">
               View collection<span class="visually-hidden">: {{ artist.name }}</span>
             </a>
@@ -91,8 +91,8 @@
              pairs. Screen readers announce them as pairs, not loose text. #}
           <dl class="details">
             <div><dt>Artist</dt><dd>{{ spotlight.artist_name }}</dd></div>
-            <div><dt>Date</dt><dd>{{ spotlight.year }}</dd></div>
-            <div><dt>Medium</dt><dd>{{ spotlight.medium }}</dd></div>
+            {{ detail("Date", spotlight.year) }}
+            {{ detail("Medium", spotlight.medium) }}
           </dl>
 
           {{ price_status(spotlight) }}

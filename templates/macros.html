@@ -43,13 +43,27 @@
     {% else %}
       <span class="price__amount">{{ art.price_cents | usd }}</span>
       {% if art.inventory_quantity > 1 %}
-        {# An edition: several copies of the same work exist. #}
+        {# Several copies of the same print in stock. Stock, not the
+           edition: which impression a print is lives in art.edition. #}
         <span class="tag">{{ art.inventory_quantity }} available</span>
       {% else %}
         <span class="tag">Available</span>
       {% endif %}
     {% endif %}
   </p>
+{% endmacro %}
+
+
+{#
+  One labelled fact in a <dl class="details">, or nothing at all.
+
+  A fact can be unknown (NULL), and then the row is left out, label and all:
+  "Date:" with nothing after it tells the visitor less than no row. Every
+  optional fact in a details list goes through here, so the rule is written
+  once.
+#}
+{% macro detail(label, value) %}
+  {%- if value %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endif -%}
 {% endmacro %}
 
 
@@ -152,15 +166,21 @@
       <h3 class="artwork__title work-title">
         {# Every placeholder work is called "Artwork Title", so the accessible
            name gets the medium (and artist) appended, hidden on screen. A
-           screen reader otherwise hears the same link text six times over. #}
+           screen reader otherwise hears the same link text six times over.
+
+           Lists of facts are built from the KNOWN ones: `select` with no
+           test keeps only the truthy items, so an unknown medium or date
+           drops out together with its comma. #}
+        {% set more = [art.medium, ("by " ~ art.artist_name) if show_artist else none]
+                      | select | join(", ") %}
         <a class="artwork__link" href="{{ url_for('artwork_page', artwork_id=art.id) }}">
-          {{ art.title }}<span class="visually-hidden">, {{ art.medium }}{% if show_artist %}, by {{ art.artist_name }}{% endif %}</span>
+          {{ art.title }}{% if more %}<span class="visually-hidden">, {{ more }}</span>{% endif %}
         </a>
       </h3>
-      <p class="muted small">
-        {%- if show_artist %}{{ art.artist_name }}, {% endif %}{{ art.year -}}
-      </p>
-      <p class="muted small">{{ art.medium }}</p>
+      {% set byline = [art.artist_name if show_artist else none, art.year]
+                      | select | join(", ") %}
+      {% if byline %}<p class="muted small">{{ byline }}</p>{% endif %}
+      {% if art.medium %}<p class="muted small">{{ art.medium }}</p>{% endif %}
       {{ price_status(art) }}
     </div>
   </li>

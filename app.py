@@ -213,7 +213,7 @@ DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
 
 # The schema this code was written against: the PRAGMA user_version that
 # schema.sql writes into the file. The two change together.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Database files already found to be the right version, so the check costs
 # one statement per file per process rather than one per request.
@@ -332,7 +332,7 @@ _ALT_CASE = "COALESCE(aw.alt_text, aw.title || ' by ' || ar.name)"
 
 _ARTWORK_COLUMNS = f"""
     aw.id, aw.title, aw.year, aw.medium, aw.category, aw.description,
-    aw.price_cents, aw.available_for_purchase, aw.inventory_quantity,
+    aw.dimensions, aw.edition, aw.inscriptions, aw.price_cents, aw.available_for_purchase, aw.inventory_quantity,
     aw.is_featured, aw.image, aw.image_width, aw.image_height,
     ar.name AS artist_name, ar.slug AS artist_slug,
     {_STATUS_CASE} AS status,
@@ -1757,9 +1757,9 @@ def artwork_form_values(artwork=None):
         "artist_id": str(artwork["artist_id"]),
         "title": artwork["title"],
         "year": artwork["year"] or "",
-        "medium": artwork["medium"],
+        "medium": artwork["medium"] or "",
         "category": artwork["category"],
-        "description": artwork["description"],
+        "description": artwork["description"] or "",
         "price": price_for_input(artwork["price_cents"]),
         "inventory_quantity": str(artwork["inventory_quantity"]),
         "available_for_purchase": bool(artwork["available_for_purchase"]),
@@ -1803,7 +1803,9 @@ def validate_artwork(form, files, current_image=None):
     if artist_id not in artist_ids:
         errors["artist_id"] = "Choose an artist."
 
-    for name in ("title", "medium", "category", "description"):
+    # Medium and description are facts that may not be known (Stage 21):
+    # left blank, they are stored as unknown, like the year.
+    for name in ("title", "category"):
         if not values[name]:
             errors[name] = "Required."
     for name, limit in TEXT_LIMITS.items():
@@ -1870,9 +1872,9 @@ def validate_artwork(form, files, current_image=None):
         # string, which would mean "deliberately blank". Schema.sql draws the
         # same distinction.
         "year": values["year"] or None,
-        "medium": values["medium"],
+        "medium": values["medium"] or None,
         "category": values["category"],
-        "description": values["description"],
+        "description": values["description"] or None,
         "price_cents": price_cents,
         "available_for_purchase": int(values["available_for_purchase"]),
         "inventory_quantity": inventory,
@@ -1935,6 +1937,21 @@ def count_sales(artwork_id):
 
 
 # --- Template helpers --------------------------------------------------------
+
+def _finalize(value):
+    """Every {{ }} passes through here just before it is printed.
+
+    Jinja prints a value with str(), and str(None) is "None" -- so an
+    unknown fact (NULL) showed the word "None" on the page, and data-year=
+    "None" handed it to the lightbox. Here, unknown prints as nothing. A
+    safety net, not the whole answer: a label with nothing after it is
+    still wrong, so the templates also leave out the label (the `detail`
+    macro) and the comma (`| select | join`) when the value is unknown."""
+    return "" if value is None else value
+
+
+app.jinja_env.finalize = _finalize
+
 
 @app.template_filter("srcset")
 def srcset(art):

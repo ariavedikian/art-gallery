@@ -26,7 +26,7 @@
 
       <p class="lead">
         <span class="work-title">{{ artwork.title }}</span>
-        — {{ artwork.artist_name }}, {{ artwork.medium }} (#{{ artwork.id }})
+        — {{ [artwork.artist_name, artwork.medium] | select | join(", ") }} (#{{ artwork.id }})
       </p>
 
       {% if sales %}
