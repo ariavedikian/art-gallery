@@ -9,10 +9,12 @@
 -- real artist, title, date, medium or price ever belongs here.
 --
 -- The tests depend on these exact values: six works with ids 1-6, in the
--- states the comments below describe (an original for sale, an edition of
--- 12, a sold work, the spotlight, a work not for sale, an unfeatured
--- edition), the running order 4, 2, 5, 1, 3, 6, and the slugs artist-one and
--- artist-two. Change a value here and you change what the tests expect.
+-- states the comments below describe (an original for sale, a print with 12
+-- copies in stock, a sold work, the spotlight, a work not for sale, an
+-- unfeatured print with 25 copies), the running order 4, 2, 5, 1, 3, 6, the
+-- slugs artist-one and artist-two, and one placeholder source citing artist
+-- one's name and dates and work 1's title. Change a value here and you
+-- change what the tests expect.
 -- =============================================================================
 
 
@@ -50,7 +52,7 @@ VALUES
      'placeholders/artwork-01.svg', 900, 1100, 40,
      'Placeholder image of Artwork Title by Artist One'),
 
-    -- An edition: twelve of these prints remain.
+    -- A print with twelve copies in stock.
     ((SELECT id FROM artists WHERE slug = 'artist-two'),
      'Artwork Title', '2025', 'Lithograph', 'Print',
      'Placeholder artwork description.', 125000, 1, 12, 1,
@@ -79,9 +81,30 @@ VALUES
      'placeholders/artwork-05.svg', 1300, 800, 30,
      'Placeholder image of Artwork Title by Artist One'),
 
-    -- Another edition, not featured on the homepage but shown in All works.
+    -- Another print, 25 copies, not featured on the homepage but shown in
+    -- All works.
     ((SELECT id FROM artists WHERE slug = 'artist-two'),
      'Artwork Title', '2025', 'Etching', 'Print',
      'Placeholder artwork description.', 58000, 1, 25, 0,
      'placeholders/artwork-06.svg', 1000, 1000, 60,
      'Placeholder image of Artwork Title by Artist Two');
+
+
+-- One placeholder source, so every page test also sees a Sources list: on
+-- artist one's page (name and dates) and on work 1's page (its title).
+-- example.com is reserved for examples; it is nobody's real site.
+INSERT INTO sources (ref, citation, url, accessed) VALUES
+    ('placeholder-source', 'Placeholder source', 'https://example.com/source',
+     '2025-01-01');
+
+INSERT INTO artist_citations (artist_id, field, source_id) VALUES
+    ((SELECT id FROM artists WHERE slug = 'artist-one'), 'name',
+     (SELECT id FROM sources WHERE ref = 'placeholder-source')),
+    ((SELECT id FROM artists WHERE slug = 'artist-one'), 'lifespan',
+     (SELECT id FROM sources WHERE ref = 'placeholder-source'));
+
+-- Works have no slug; ids 1-6 are fixed by the order above, and the tests
+-- already rely on them.
+INSERT INTO artwork_citations (artwork_id, field, source_id, locator) VALUES
+    (1, 'title', (SELECT id FROM sources WHERE ref = 'placeholder-source'),
+     'p. 1');

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, artwork_image, csrf_field, detail, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, csrf_field, detail, price_status,
+                             sources_list %}
 
 {#
   One artwork, in detail. The route fetches a single row and passes it in as
@@ -127,5 +128,7 @@
     </div>
   </section>
   {% endif %}
+
+  {{ sources_list(sources) }}
 
 {% endblock %}

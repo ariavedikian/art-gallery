@@ -98,6 +98,26 @@ styling, cluttered layouts.
   missing one takes its comma with it (`filter(Boolean)` in lightbox.js).
   `tests/test_unknown_facts.py` blanks every optional fact and parses each
   page for "None", empty `<p>`/`<dd>`/`<dt>`, and stranded separators.
+- **Every fact is cited.** `sources` (a `ref` the seed uses to point at
+  it, the citation, an https `url` and the date it was `accessed`) and two
+  junction tables, `artist_citations` and `artwork_citations`, one row per
+  (subject, field, source), with an optional `locator` ("p. 112"). Citable
+  fields are `ARTIST_FIELDS` / `ARTWORK_FIELDS` in app.py and the CHECK
+  lists in schema.sql (stated twice; the test compares them); `artist` is
+  the attribution. Not cited: alt text, category, price, stock, running
+  order. Citations cascade with their subject; a cited source cannot be
+  deleted. The artist and artwork pages end with a numbered Sources list
+  (`sources_list` macro), one entry per source with the facts it supports.
+  `tests/test_content.py` checks `database/seed.sql`: every non-NULL fact
+  cited, no placeholder text or picture, every source used, https and
+  dated, portraits 800x1000, its pages load and list their sources; and
+  that `tests/seed.sql` holds no real name.
+- **The neutral picture says what is true.** `NO_IMAGE`
+  (`placeholders/no-image.svg`, 800x1000, "Image not available") stands in
+  wherever an image may not be shown (reproduction rights). Its alt text is
+  derived in SQL (`_ALT_CASE`, `_ARTIST_COLUMNS`) and beats anything written
+  for the row: the fallbacks would call a grey box "Portrait of ...". It is
+  the one file in `placeholders/` the real seed may use.
 - **Stock is not an edition.** `inventory_quantity` is how many copies the
   gallery has ("Available: 12 copies"); `edition` is which impression a
   print is ("23/150"). The artwork page used to label stock "Edition".
@@ -496,7 +516,8 @@ styling, cluttered layouts.
   the hero and the artwork/artist page images are eager with
   `fetchpriority="high"`.
 - **Every foreign-key child column is indexed** (`order_items.order_id`,
-  `order_items.artwork_id`, `artworks.artist_id`): SQLite checks the child
+  `order_items.artwork_id`, `artworks.artist_id`, both citation tables'
+  `source_id`; their subject ids lead their primary keys): SQLite checks the child
   table on every parent DELETE. Queries per page are 1-5 and must not grow
   with the collection; `tests/test_performance.py` adds 30 works and checks.
 
@@ -545,17 +566,19 @@ styling, cluttered layouts.
   under a real artist's name (that would be an invented attribution), so
   the real artists start with zero works; the site handles that already.
 
-**Stage 21 audit findings still to fix:**
+**Stage 21, still open:**
 
-- The placeholder SVGs have names drawn in ("ARTIST ONE", "ARTWORK ONE"), so
-  a real row cannot point at them. A neutral "image not available" picture
-  comes in Part 3, with a rule for its alt text (the "<title> by <artist>"
-  fallback would claim the neutral picture shows the work).
 - `dimensions`, `edition` and `inscriptions` are not in the admin form, on
-  purpose: cited facts are edited in `database/seed.sql`. (The form still
-  edits title, date, medium and description; whether the admin should keep
-  editing facts at all is a question for Part 5.) Nor are they in the API:
-  its contract was left unchanged.
+  purpose: cited facts are edited in `database/seed.sql`. The form still
+  edits title, date, medium and description, and an edit there leaves the
+  old citation pointing at the new value: whether the admin should edit
+  facts at all is a question for Part 5. Nor are the new fields or the
+  sources in the API: its contract was left unchanged.
+- The site now shows real artists (names and dates only) beside
+  placeholder gallery text, hero and name (`GALLERY_NAME`, `HERO`, the
+  homepage paragraphs, the footer): Part 6. The header still fits one row
+  at 64em with the real names (823px of ~976px, measured 2026-10-09); the
+  wordmark is "Gallery Placeholder", so re-measure when it changes.
 - *Things placeholders hid:* portraits' 800x1000 is typed into
   `index.html` and `artist.html` (see Known gaps); `GALLERY_NAME` and
   `HERO` in app.py; real alt text for every real image; the header's 64em
@@ -722,6 +745,7 @@ python tests/test_sessions.py
 python tests/test_csrf.py
 python tests/test_protection.py
 python tests/test_unknown_facts.py
+python tests/test_content.py
 ```
 
 Make any missing image renditions (after changing `RENDITION_WIDTHS`, or for
@@ -767,8 +791,9 @@ art-gallery/
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
 │                  #   support.py holds the throwaway-database helpers,
 │                  #   seed.sql the tests' placeholder data (the fixture)
-└── database/         # schema.sql (artists, artworks, orders, order_items,
-                  #   admins, login_failures),
+└── database/         # schema.sql (artists, artworks, sources,
+                  #   artist_citations, artwork_citations, orders,
+                  #   order_items, admins, login_failures),
                   #   seed.sql (the site's content), art_gallery.db (generated)
 ```
 
@@ -927,10 +952,19 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       `detail` that always writes its row: empty `<dd>`s). Checked in a
       browser: the lightbox caption and hidden description, no CSP errors,
       no overflow at 320px with the longer labels.
-      **Part 3:** sources and citation tables (schema v5), a content test,
-      sources on the pages, the neutral "image not available" picture (moved
-      from Part 2, where nothing used it yet); `database/seed.sql` becomes
-      the two artists' names and lifespans, cited to ADAGP, and no works.
+      **Part 3 (done):** `sources` and the two citation tables (schema v5),
+      a Sources list on the artist and artwork pages, `NO_IMAGE` with its
+      alt text derived in SQL, `tests/test_content.py`. `database/seed.sql`
+      is now real: Jean Jansem (1920–2013) and Jean Carzou (1907–2000),
+      names and dates cited to their ADAGP directory entries, portraits the
+      neutral picture, no works. The test seed gained one placeholder source,
+      so every page sweep sees a Sources list. Six rules broken in throwaway
+      copies, each caught by name (an uncited summary, a placeholder
+      portrait, an http source with no date, a real name in the test seed,
+      the neutral picture described as a portrait, a schema CHECK list that
+      disagrees with app.py). `test_images.py` now says when a seed has no
+      works to check, instead of passing silently. In a browser: the header
+      still fits one row at 64em, Sources render, no console errors.
       **Part 4:** artist research: candidate facts with sources, the owner
       approves, bios written from approved facts only.
       **Part 5:** the owner's works: photos transcribed, candidates with

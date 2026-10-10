@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid %}
+{% from "macros.html" import artwork_grid, sources_list %}
 
 {#
-  One template for every artist. The route passes in `artist` and `artworks`;
-  this file never knows or cares which artist it is showing.
+  One template for every artist. The route passes in `artist`, `artworks`
+  and `sources`; this file never knows or cares which artist it is showing.
 #}
 
 {% block title %}{{ artist.name }} — {{ gallery_name }}{% endblock %}
@@ -57,5 +57,7 @@
                       empty_message="No works in this collection yet.") }}
     </div>
   </section>
+
+  {{ sources_list(sources) }}
 
 {% endblock %}

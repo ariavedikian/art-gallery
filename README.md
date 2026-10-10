@@ -77,7 +77,8 @@ python init_db.py --reset
 ```
 
 `database/schema.sql` defines the tables; `database/seed.sql` fills them with
-the site's content. The tests use their own placeholder data,
+the site's real content, every fact cited to a source (listed on the artist
+and artwork pages). The tests use their own placeholder data,
 `tests/seed.sql`. The generated `database/art_gallery.db` is gitignored.
 
 ## Tests

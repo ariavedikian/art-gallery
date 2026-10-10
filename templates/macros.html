@@ -68,6 +68,37 @@
 
 
 {#
+  Where the facts on this page come from: the page's footnotes (Stage 21).
+  Each source once, with the facts it supports, from get_artist_sources() or
+  get_artwork_sources(). Nothing at all when there are none -- a "Sources"
+  heading over an empty list would claim something it does not show.
+
+  A source's url is an outside link. It comes from seed.sql, never from a
+  visitor, and tests/test_content.py accepts only https://; the CSP would
+  refuse a javascript: link anyway.
+#}
+{% macro sources_list(sources) %}
+  {% if sources %}
+    <section class="section sources" aria-labelledby="sources-heading">
+      <div class="container prose">
+        <h2 class="section-title" id="sources-heading">Sources</h2>
+        <ol class="sources__list small">
+          {% for source in sources %}
+            <li>
+              {% if source.url %}<a href="{{ source.url }}">{{ source.citation }}</a>
+              {%- else %}{{ source.citation }}{% endif %}
+              <span class="muted">— for the {{ source.supports | join(", ") }}
+                {%- if source.accessed %}; consulted {{ source.accessed }}{% endif %}.</span>
+            </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </section>
+  {% endif %}
+{% endmacro %}
+
+
+{#
   A whole grid of artworks, including the empty case.
 
   Three pages show a grid of artworks: the homepage, each artist page, and

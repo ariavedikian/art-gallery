@@ -86,6 +86,10 @@ def seed_matches_files(results, seed):
     with direct_connection() as connection:
         rows = connection.execute(
             "SELECT id, image, image_width, image_height FROM artworks").fetchall()
+    # A rule checked over nothing passes without proving anything. Say so,
+    # rather than print a heading with no checks under it.
+    if not rows:
+        print("    (no artworks in it yet: nothing to check)")
     for row in rows:
         path = PROJECT_ROOT / "static" / "images" / row["image"]
         results.check(f"artwork {row['id']} ({row['image']})",

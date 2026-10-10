@@ -60,6 +60,17 @@ HERO = {
     "alt": "Placeholder hero image",
 }
 
+# The picture shown where no image may be shown: a real work or artist whose
+# images are not cleared for reproduction (Stage 21; both artists' rights are
+# managed by ADAGP). Not a development placeholder -- it says what is true.
+# Its alt text is derived in SQL (_ALT_CASE, _ARTIST_COLUMNS) and wins over
+# anything written for the row: the "<title> by <artist>" fallback would
+# claim a grey box shows the work. Both are pasted into SQL by f-string,
+# which is safe only because they are constants with no quote in them.
+NO_IMAGE = "placeholders/no-image.svg"
+NO_IMAGE_ALT = "Image not available"
+assert "'" not in NO_IMAGE + NO_IMAGE_ALT
+
 # A whole number from a form, a URL or the environment is ASCII digits and
 # nothing else. str.isdigit() is NOT this test: it is true for "²"
 # (superscript two), which int() then refuses with a crash, and for "٣",
@@ -213,7 +224,7 @@ DATABASE_PATH = Path(__file__).resolve().parent / "database" / "art_gallery.db"
 
 # The schema this code was written against: the PRAGMA user_version that
 # schema.sql writes into the file. The two change together.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Database files already found to be the right version, so the check costs
 # one statement per file per process rather than one per request.
@@ -327,8 +338,11 @@ _STATUS_CASE = """
 
 # An image's alt text: the one written for it, or, until someone writes one,
 # "<title> by <artist>". Worked out here, once, so every <img> on the site
-# and the lightbox (which copies it from the card) say the same thing.
-_ALT_CASE = "COALESCE(aw.alt_text, aw.title || ' by ' || ar.name)"
+# and the lightbox (which copies it from the card) say the same thing. The
+# neutral picture always says what it is (see NO_IMAGE).
+_ALT_CASE = f"""
+    CASE WHEN aw.image = '{NO_IMAGE}' THEN '{NO_IMAGE_ALT}'
+         ELSE COALESCE(aw.alt_text, aw.title || ' by ' || ar.name) END"""
 
 _ARTWORK_COLUMNS = f"""
     aw.id, aw.title, aw.year, aw.medium, aw.category, aw.description,
@@ -355,9 +369,10 @@ MAX_SEARCH_LENGTH = 100
 
 # One column list for both artist queries, with the portrait's alt text
 # derived the same way as an artwork's.
-_ARTIST_COLUMNS = """
+_ARTIST_COLUMNS = f"""
     id, slug, name, lifespan, summary, bio, portrait,
-    COALESCE(portrait_alt, 'Portrait of ' || name) AS portrait_alt
+    CASE WHEN portrait = '{NO_IMAGE}' THEN '{NO_IMAGE_ALT}'
+         ELSE COALESCE(portrait_alt, 'Portrait of ' || name) END AS portrait_alt
 """
 
 
@@ -539,6 +554,66 @@ def get_artworks_by_artist(slug):
         WHERE ar.slug = ?
         ORDER BY aw.display_order, aw.id
     """, (slug,))
+
+
+# --- Sources -----------------------------------------------------------------
+# Every fact about an artist or a work is linked to a source (Stage 21). The
+# keys are the facts a citation may name -- the same lists as the CHECK
+# constraints in schema.sql, stated twice because SQLite cannot read a dict;
+# tests/test_content.py fails if they disagree. The values are what the
+# Sources list calls each fact, in the order it lists them.
+ARTIST_FIELDS = {"name": "name", "lifespan": "dates", "summary": "summary",
+                 "bio": "biography"}
+ARTWORK_FIELDS = {"artist": "attribution", "title": "title", "year": "date",
+                  "medium": "medium", "description": "description",
+                  "dimensions": "dimensions", "edition": "edition",
+                  "inscriptions": "inscriptions"}
+
+
+def _group_sources(rows, fields):
+    """One entry per source, from rows that are one per (source, fact).
+
+    The query sorts by source, so a source's rows arrive together. What each
+    supports becomes a list of labels in the fields' own order -- "name,
+    dates", never whichever row happened to be inserted first -- with the
+    locator beside its fact: "dates (p. 112)".
+    """
+    order = list(fields)
+    sources = []
+    for row in rows:
+        if not sources or sources[-1]["id"] != row["id"]:
+            sources.append({"id": row["id"], "citation": row["citation"],
+                            "url": row["url"], "accessed": row["accessed"],
+                            "facts": []})
+        sources[-1]["facts"].append(row)
+    for source in sources:
+        facts = sorted(source.pop("facts"), key=lambda row: order.index(row["field"]))
+        source["supports"] = [
+            f"{fields[row['field']]} ({row['locator']})" if row["locator"]
+            else fields[row["field"]] for row in facts]
+    return sources
+
+
+def get_artist_sources(artist_id):
+    """The sources behind an artist's facts, for the page's Sources list."""
+    return _group_sources(query_db("""
+        SELECT s.id, s.citation, s.url, s.accessed, c.field, c.locator
+        FROM artist_citations c
+        JOIN sources s ON s.id = c.source_id
+        WHERE c.artist_id = ?
+        ORDER BY s.citation, s.id
+    """, (artist_id,)), ARTIST_FIELDS)
+
+
+def get_artwork_sources(artwork_id):
+    """The sources behind a work's facts, for the page's Sources list."""
+    return _group_sources(query_db("""
+        SELECT s.id, s.citation, s.url, s.accessed, c.field, c.locator
+        FROM artwork_citations c
+        JOIN sources s ON s.id = c.source_id
+        WHERE c.artwork_id = ?
+        ORDER BY s.citation, s.id
+    """, (artwork_id,)), ARTWORK_FIELDS)
 
 
 # --- The cart ----------------------------------------------------------------
@@ -2145,6 +2220,7 @@ def artist_page(slug):
         "artist.html",
         artist=artist,
         artworks=get_artworks_by_artist(slug),
+        sources=get_artist_sources(artist["id"]),
     )
 
 
@@ -2204,6 +2280,7 @@ def artwork_page(artwork_id):
         "artwork.html",
         artwork=artwork,
         related=get_related_artworks(artwork["artist_slug"], artwork_id),
+        sources=get_artwork_sources(artwork_id),
     )
 
 

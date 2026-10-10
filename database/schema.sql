@@ -23,8 +23,9 @@ PRAGMA foreign_keys = ON;
 -- to run against an older build, naming the fix, rather than failing later
 -- with "no such column". Any change to a table, column or index here: add 1,
 -- and change SCHEMA_VERSION in app.py to match.
-PRAGMA user_version = 4;     -- 2: admins.session_key; 3: login_failures (Stage 20)
+PRAGMA user_version = 5;     -- 2: admins.session_key; 3: login_failures (Stage 20)
                              -- 4: optional facts, catalogue fields (Stage 21)
+                             -- 5: sources and citations (Stage 21)
 
 
 -- Drop in reverse order of dependency: artworks points at artists, so it has
@@ -34,6 +35,9 @@ DROP TABLE IF EXISTS login_failures;
 DROP TABLE IF EXISTS admins;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS artwork_citations;
+DROP TABLE IF EXISTS artist_citations;
+DROP TABLE IF EXISTS sources;
 DROP TABLE IF EXISTS artworks;
 DROP TABLE IF EXISTS artists;
 
@@ -156,6 +160,76 @@ CREATE TABLE artworks (
 -- for columns you actually search on. artist_id is looked up on every
 -- artist page, so it earns one.
 CREATE INDEX idx_artworks_artist_id ON artworks (artist_id);
+
+
+-- --- sources -----------------------------------------------------------------
+-- Where a fact comes from: a web page, a book, a certificate in the owner's
+-- files. Every fact the site states about an artist or a work is linked to
+-- at least one of these (the citation tables below), and
+-- tests/test_content.py fails on any fact in database/seed.sql that is not.
+CREATE TABLE sources (
+    id        INTEGER PRIMARY KEY,
+
+    -- A short name seed.sql uses to point at this source ('adagp-jansem'),
+    -- the way artworks find their artist by slug rather than by a typed id.
+    ref       TEXT NOT NULL UNIQUE,
+
+    -- How the source is named on the page, and how a reader finds it again.
+    citation  TEXT NOT NULL,
+
+    -- NULL for a source with no web address (a printed catalogue, a
+    -- certificate). A web page can change after we read it, so a URL comes
+    -- with the date it was checked (ISO 8601, like every date here).
+    url       TEXT,
+    accessed  TEXT
+);
+
+
+-- --- artist_citations and artwork_citations -----------------------------------
+-- A JUNCTION table: one row per pairing of a fact with a source. One source
+-- can support many facts and one fact can have many sources, so neither
+-- table can hold the other in a column -- the pairing needs a table of its
+-- own, as an order's lines do.
+--
+-- field names which fact: a column of the subject's table ('artist' meaning
+-- the attribution, artworks.artist_id). The CHECK lists are stated twice,
+-- here and as ARTIST_FIELDS / ARTWORK_FIELDS in app.py, because SQLite cannot
+-- read a Python dict; tests/test_content.py fails if they disagree.
+--
+-- The primary key is all three columns together, so the same fact cannot
+-- cite the same source twice.
+--
+-- ON DELETE CASCADE from the subject: a footnote to a deleted work means
+-- nothing. ON DELETE RESTRICT from the source: a source still cited cannot
+-- disappear from under the facts that rest on it.
+CREATE TABLE artist_citations (
+    artist_id  INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    field      TEXT NOT NULL
+               CHECK (field IN ('name', 'lifespan', 'summary', 'bio')),
+    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE RESTRICT,
+
+    -- Where in the source, when it is long: "p. 112", "lot 45". Optional.
+    locator    TEXT,
+
+    PRIMARY KEY (artist_id, field, source_id)
+);
+
+CREATE TABLE artwork_citations (
+    artwork_id INTEGER NOT NULL REFERENCES artworks(id) ON DELETE CASCADE,
+    field      TEXT NOT NULL
+               CHECK (field IN ('artist', 'title', 'year', 'medium', 'description',
+                                'dimensions', 'edition', 'inscriptions')),
+    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE RESTRICT,
+    locator    TEXT,
+    PRIMARY KEY (artwork_id, field, source_id)
+);
+
+-- The primary keys begin with the subject's id, so they already serve as
+-- its index (a page asks "this artist's citations"). source_id is a foreign
+-- key too, and SQLite checks it on every DELETE FROM sources, so it gets
+-- one of its own (see idx_order_items_artwork_id).
+CREATE INDEX idx_artist_citations_source_id ON artist_citations (source_id);
+CREATE INDEX idx_artwork_citations_source_id ON artwork_citations (source_id);
 
 
 -- --- orders ------------------------------------------------------------------
