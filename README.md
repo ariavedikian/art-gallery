@@ -39,7 +39,9 @@ python init_db.py --reset
 ```
 
 `database/schema.sql` defines the tables; `database/seed.sql` fills them with
-placeholder content. The generated `database/art_gallery.db` is gitignored.
+the site's content (still placeholders until Stage 21 replaces them). The
+tests use their own placeholder data, `tests/seed.sql`. The generated
+`database/art_gallery.db` is gitignored.
 
 Inspect it from Python:
 

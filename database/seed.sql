@@ -1,21 +1,22 @@
 -- =============================================================================
--- Art Gallery — placeholder data
+-- Art Gallery — the site's content
 --
--- Loaded by init_db.py after schema.sql.
+-- Loaded by init_db.py after schema.sql. This is what the site shows.
 --
--- EVERY VALUE IN THIS FILE IS PLACEHOLDER CONTENT. No real artist, title,
--- date, medium or price appears here. Real Jansem and Carzou material is
--- added at Stage 21, from verified sources.
+-- The tests do NOT read their values from this file: they have their own
+-- placeholder copy, tests/seed.sql, so changing the content here can never
+-- break a test that checks a value. (A test may still check a RULE against
+-- this file, such as every image's stored size matching the file.)
 --
--- This file is the only thing that has to be replaced then. The schema, the
--- queries, the routes and the templates all stay exactly as they are.
+-- For now it still holds the same placeholders as the tests' copy. Stage 21
+-- replaces them with real Jansem and Carzou content, every fact cited to a
+-- source. The schema, the routes and the templates stay as they are.
 -- =============================================================================
 
 
 -- id is left out on purpose: SQLite assigns 1 and 2 automatically.
 -- portrait_alt says "Placeholder" because these images ARE placeholders. The
--- word lives here, in the data, and never in a template: Stage 21 replaces
--- these rows and the templates carry on unchanged.
+-- word lives here, in the data, and never in a template.
 INSERT INTO artists (slug, name, lifespan, summary, bio, portrait, portrait_alt) VALUES
     ('artist-one', 'Artist One', '1900-1980',
      'Placeholder artist description. One or two sentences introducing the artist and the character of their work.',

@@ -29,6 +29,13 @@ from flask.testing import FlaskClient  # noqa: E402
 
 DATABASE_DIR = PROJECT_ROOT / "database"
 
+# Two seeds, answering two different questions. TEST_SEED is placeholder
+# data the tests' expected values come from, and never changes with the
+# content. SITE_SEED is what the site shows, and changes whenever the
+# content does, so no test may take a value from it.
+TEST_SEED = PROJECT_ROOT / "tests" / "seed.sql"
+SITE_SEED = DATABASE_DIR / "seed.sql"
+
 
 class PageClient(FlaskClient):
     """A test client that behaves like a browser on OUR pages.
@@ -63,11 +70,14 @@ app.app.test_client_class = PageClient
 
 
 @contextmanager
-def temp_database():
+def temp_database(seed=TEST_SEED):
     """Point the app at a throwaway database for the duration of the block.
 
-    Built from the real schema.sql and seed.sql, so a test runs against the
-    actual schema rather than a copy that can drift out of step with it.
+    Built from the real schema.sql, so a test runs against the actual schema
+    rather than a copy that can drift out of step with it. The DATA is the
+    tests' own placeholder seed, TEST_SEED, whose values the tests depend
+    on. A test checking a rule that every seed must obey can pass
+    seed=SITE_SEED, to check the site's real content as well.
 
     get_db() reads app.DATABASE_PATH when it is called rather than at import
     time, so reassigning the module attribute is enough to redirect the whole
@@ -82,7 +92,7 @@ def temp_database():
     try:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.executescript((DATABASE_DIR / "schema.sql").read_text(encoding="utf-8"))
-        connection.executescript((DATABASE_DIR / "seed.sql").read_text(encoding="utf-8"))
+        connection.executescript(seed.read_text(encoding="utf-8"))
         connection.commit()
     finally:
         connection.close()
@@ -93,6 +103,26 @@ def temp_database():
     finally:
         app.DATABASE_PATH = original
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+NOT_FOUND_PATH = "/no-such-page"
+
+
+def get_page(client, path, results):
+    """GET a page a test is about to inspect, and fail unless it IS that page.
+
+    A test that sweeps a list of pages checks whatever comes back. If a path
+    stops existing (a slug renamed, a route moved), the 404 page comes back
+    instead, passes every check written for pages in general, and the page
+    the sweep was written for is never looked at again -- while the test
+    still prints PASS beside its address. So every page must answer 200,
+    except NOT_FOUND_PATH, whose 404 is the point."""
+    response = client.get(path)
+    expected = 404 if path == NOT_FOUND_PATH else 200
+    if response.status_code != expected:
+        results.fail(f"{path} answered {response.status_code}, not {expected}:"
+                     " the checks on it looked at the wrong page")
+    return response
 
 
 @contextmanager

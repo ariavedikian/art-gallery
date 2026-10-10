@@ -22,7 +22,7 @@ import sys
 from html.parser import HTMLParser
 
 from support import (PROJECT_ROOT, Results, create_admin, direct_connection,
-                     log_in, place_order, temp_database)
+                     get_page, log_in, place_order, temp_database)
 
 import app
 
@@ -115,7 +115,7 @@ def every_page(results):
              "/orders", "/no-such-page", "/admin", "/admin/artworks/new",
              "/admin/artworks/2/edit", "/admin/artworks/2/delete", "/admin/orders"]
     for path in pages:
-        problems = structure_problems(client.get(path).get_data(as_text=True))
+        problems = structure_problems(get_page(client, path, results).get_data(as_text=True))
         results.check(f"{path}", problems, [])
 
     # A rejected form adds error messages and aria-describedby links to them.

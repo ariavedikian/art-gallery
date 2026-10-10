@@ -15,7 +15,7 @@ And one CSS rule, because it has already gone wrong once.
 import re
 import sys
 
-from support import PROJECT_ROOT, Results, place_order, temp_database
+from support import PROJECT_ROOT, Results, get_page, place_order, temp_database
 
 import app
 
@@ -28,7 +28,7 @@ def header_structure(results):
     print("  The header on every kind of page")
     client, reference = place_order(artwork_id=2)   # a browser with a remembered order
     for path in PAGES + [f"/order/{reference}"]:
-        html = client.get(path).get_data(as_text=True)
+        html = get_page(client, path, results).get_data(as_text=True)
         header = re.search(r'<header class="site-header">.*?</header>', html, re.S).group(0)
         toggle = re.search(r"<button[^>]*menu-toggle[^>]*>", header)
         ok = (

@@ -66,6 +66,11 @@ styling, cluttered layouts.
 - **The database is generated, never edited by hand.** `database/schema.sql`
   and `database/seed.sql` are the source of truth; rebuild the .db file with
   `python init_db.py --reset`. The .db file is gitignored.
+- **Two seeds, two questions.** `database/seed.sql` is what the site shows,
+  and changes with the content. `tests/seed.sql` is the tests' fixture:
+  placeholders only, forever, and the only file a test may take an expected
+  VALUE from. A test checking a RULE every seed must obey (image sizes now,
+  citations from Stage 21 Part 3) runs over both: `temp_database(SITE_SEED)`.
 - **The schema has a version number.** `schema.sql` sets `PRAGMA user_version`;
   `SCHEMA_VERSION` in app.py must match, and `get_db()` refuses any other
   (once per file per process), naming `init_db.py --reset`. Any change to a
@@ -205,10 +210,15 @@ styling, cluttered layouts.
   a work must never rewrite a receipt. `artwork_id` is kept only for the link.
 - **Mock payment is labelled unmistakably**, in the form and on the receipt,
   and is selectable approve/decline so the failure path can be tested.
-- **Tests build their own throwaway database** from `schema.sql` and
-  `seed.sql` in a temp folder and point `app.DATABASE_PATH` at it, via
-  `tests/support.py`. A test that can destroy the database you are working on
-  is worse than no test.
+- **Tests build their own throwaway database** from `database/schema.sql`
+  and `tests/seed.sql` in a temp folder and point `app.DATABASE_PATH` at it,
+  via `tests/support.py`. A test that can destroy the database you are
+  working on is worse than no test.
+- **A page sweep checks it got the page.** Tests that loop over many pages
+  fetch them with `support.get_page()`, which fails unless each answers 200
+  (404 only for `/no-such-page`). Without it, a renamed slug served the 404
+  page, which passed every general check while printing PASS beside the
+  artist page's address (found proving Stage 21 Part 1).
 - **Tests inspect the database on their own connection**, not through the code
   under test. A test that checks its subject through its subject can agree
   with a bug instead of catching it.
@@ -361,7 +371,8 @@ styling, cluttered layouts.
   `image_width`/`image_height` in a POST is ignored. The allowlist check
   (`image_choices()`) runs before anything opens a file, because a filename
   from a form is a path, and `../../app.py` is a path too.
-  `tests/test_images.py` also checks every seeded size against its file.
+  `tests/test_images.py` also checks every seeded size against its file,
+  in both seeds.
 - **Placeholders are SVG, and only SVG**: files we drew and committed, so
   their contents are trusted. Uploads are never SVG, since an SVG can carry
   a `<script>` that runs as this site.
@@ -417,7 +428,7 @@ styling, cluttered layouts.
   is the `HERO` dict beside `GALLERY_NAME`. SQL derives the fallback once
   (`_ALT_CASE`: "<title> by <artist>"; "Portrait of <name>"), so a blank is
   stored as NULL and never rendered as `alt=""`, which would tell a screen
-  reader to skip the art. The word "Placeholder" lives in seed.sql, where
+  reader to skip the art. The word "Placeholder" lives in the seed data, where
   the images really are placeholders; `tests/test_accessibility.py` fails if
   a template or script writes it.
 - **The lightbox copies alt text from the card**, like the price line. It
@@ -475,13 +486,9 @@ styling, cluttered layouts.
   table on every parent DELETE. Queries per page are 1-5 and must not grow
   with the collection; `tests/test_performance.py` adds 30 works and checks.
 
-## Open items (as of 2026-09-25, end of Stage 20)
+## Open items (as of 2026-10-09, Stage 21 Part 1)
 
 **Waiting on the owner:**
-
-- The owner's `database/art_gallery.db` was built before Stage 19 and is
-  refused by the schema version check (it needs version 3). Run
-  `python init_db.py --reset`, then `flask --app app create-admin <name>`.
 
 - An answer to the question left open since Stage 16: the admin edit form
   guards stock against lost updates but not price -- if two admins save the
@@ -490,11 +497,59 @@ styling, cluttered layouts.
   answer it for them. (Stage 17 also guards `image`, for a separate reason:
   replacing an image deletes the old files.)
 - `/about` still returns the bare string `"Placeholder gallery description."`
-  from Stage 1 -- no template, no nav. Owner to choose: a placeholder page
-  now, or leave it for Stage 21 with the real text.
-- Five stray upload files from Stage 17 testing may still be in
-  `static/images/artworks/`; `flask --app app sweep-uploads --delete`
-  removes them (owner to run).
+  from Stage 1 -- no template, no nav. Decided: it becomes a real page with
+  the owner's text in Stage 21 Part 6.
+- Five stray upload files from Stage 17 testing are still in
+  `static/images/artworks/` (one PNG, `36450e54...png`, and its four
+  renditions; confirmed by `sweep-uploads` on 2026-10-09);
+  `flask --app app sweep-uploads --delete` removes them (owner to run).
+
+**Stage 21 decisions (2026-10-09; the owner chose each recommendation):**
+
+- *Real content lives in files.* `database/seed.sql` holds only real, cited
+  content (from Part 3); the tests have `tests/seed.sql` (Part 1, done).
+  Catalogue facts are edited in the seed, not the admin, while there is no
+  migration path; export or migrations wait for deployment.
+- *Sources are recorded per fact*, in a `sources` table and citation tables
+  naming the field each source supports (Part 3). A test fails on any fact
+  in `database/seed.sql` without a citation. Sources are shown on the
+  artist and artwork pages. Facts are written in our own words from
+  approved sources, never pasted; dealer listings and search summaries are
+  not sources.
+- *Text now, images only after permission.* The ADAGP directory (checked
+  2026-10-09) lists Jean Jansem (1920-2013) and Jean Carzou (1907-2000) and
+  says ADAGP manages their reproduction and representation rights; every
+  reproduction must carry "© Adagp, Paris, <year>". Owning a work does not
+  include the right to reproduce it (CPI art. L111-3). Real works show a
+  neutral "image not available" picture until the owner has ADAGP's written
+  authorisation (Part 7). Artist portraits are the photographers' rights,
+  a separate question.
+- *New optional catalogue fields:* `dimensions`, `edition`, `inscriptions`
+  (Part 2), each citable. The artwork page's "Edition: N available" is
+  really stock and gets an honest label.
+- *Works shown are works the owner holds.* Placeholder works never appear
+  under a real artist's name (that would be an invented attribution), so
+  the real artists start with zero works; the site handles that already.
+
+**Stage 21 audit findings still to fix:**
+
+- An unknown fact renders as the word "None": a NULL `year` shows
+  "Date: None" on four pages and `data-year="None"` for the lightbox; a NULL
+  `lifespan` too. Reachable today (the admin saves a work without a year).
+  `summary`, `bio`, `portrait`, `medium`, `description` are NOT NULL, so an
+  unverified fact cannot be left out yet. (Part 2)
+- The placeholder SVGs have names drawn in ("ARTIST ONE", "ARTWORK ONE"), so
+  a real row cannot point at them. (Part 2)
+- *Things placeholders hid:* portraits' 800x1000 is typed into
+  `index.html` and `artist.html` (see Known gaps); `GALLERY_NAME` and
+  `HERO` in app.py; real alt text for every real image; the header's 64em
+  breakpoint was measured with the placeholder names, so re-measure if the
+  gallery name changes. Checkout is closed in production until Stage 14.
+- *The owner may supply photos of works they own.* Treat them as photos to
+  research, not as identified works: transcribe what is visible (signature,
+  edition number, inscriptions, labels on the back), search for matching
+  records, and present candidates with their evidence for the owner to
+  confirm. Never assign a title, date or edition that was not confirmed.
 
 **Known gaps, deliberately deferred:**
 
@@ -622,6 +677,11 @@ set, instead:
 and run it under a production WSGI server, never `python app.py`, which
 refuses to start in production.
 
+The repository is on GitHub, private: `origin` is
+https://github.com/ariavedikian/art-gallery (pushed 2026-10-09, replacing
+the README GitHub generated). Every commit carries the owner's email, so
+think before making it public.
+
 `venv/` is disposable and gitignored; rebuild with
 `python -m venv venv` then `pip install -r requirements.txt`.
 
@@ -688,10 +748,11 @@ art-gallery/
 │                  #   images/artworks (uploads, gitignored)
 ├── init_db.py        # rebuilds the database from SQL files
 ├── tests/            # plain runnable scripts, stdlib only (no pytest yet);
-│                  #   support.py holds the throwaway-database helpers
+│                  #   support.py holds the throwaway-database helpers,
+│                  #   seed.sql the tests' placeholder data (the fixture)
 └── database/         # schema.sql (artists, artworks, orders, order_items,
-                  #   admins),
-                  #   seed.sql, art_gallery.db (generated)
+                  #   admins, login_failures),
+                  #   seed.sql (the site's content), art_gallery.db (generated)
 ```
 
 ## Stage roadmap
@@ -831,8 +892,28 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       http://localhost (Chrome counts it as secure), checkout is 503,
       127.0.0.1 is refused as an untrusted host, and the 11th login shows
       the throttle message.
-- [ ] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean
+- [~] **21 — Real content.** Artist One → Jean Jansem, Artist Two → Jean
       Carzou. Verified sources only. Architecture should not change.
+      Audited first (decisions and findings in Open items). Split in seven.
+      **Part 1 (done):** the tests' own placeholder seed (`tests/seed.sql`),
+      rule checks run over both seeds, `support.get_page()` for page
+      sweeps. Proved on throwaway copies: a content edit to
+      `database/seed.sql` broke 3 test files before and none after; the
+      same edit to `tests/seed.sql` breaks 6.
+      **Part 2:** room for the unknown (schema v4): optional fields, missing
+      facts rendered as nothing, a neutral "image not available" picture,
+      `dimensions`/`edition`/`inscriptions`, an honest stock label.
+      **Part 3:** sources and citation tables (schema v5), a content test,
+      sources on the pages; `database/seed.sql` becomes the two artists'
+      names and lifespans, cited to ADAGP, and no works.
+      **Part 4:** artist research: candidate facts with sources, the owner
+      approves, bios written from approved facts only.
+      **Part 5:** the owner's works: photos transcribed, candidates with
+      evidence, the owner confirms; prices and stock from the owner.
+      **Part 6:** the gallery's own words: name, hero, homepage text, footer,
+      a real `/about` page; re-measure the header if the name changes.
+      **Part 7:** real images, only after ADAGP's written authorisation:
+      the credit line, real alt text, portrait sizes out of the templates.
 - [ ] **22 — Final refactor.** Duplication, naming, dead code, query
       efficiency, error handling, broken links, console errors.
 

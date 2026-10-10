@@ -13,8 +13,8 @@ wrong number means the page jumps as it loads, or the image is squashed.
 import sys
 from contextlib import contextmanager
 
-from support import (PROJECT_ROOT, Results, create_admin, direct_connection,
-                     log_in, temp_database, temp_folder)
+from support import (PROJECT_ROOT, SITE_SEED, TEST_SEED, Results, create_admin,
+                     direct_connection, log_in, temp_database, temp_folder)
 
 import app
 
@@ -75,10 +75,14 @@ def reading_svg(results):
                       app.image_size(folder / "missing.svg"), None)
 
 
-def seed_matches_files(results):
-    """The seeded sizes were typed by hand in seed.sql. Check them against
-    the files, so a placeholder redrawn at a new size cannot go unnoticed."""
-    print("  Every seeded artwork's stored size matches its file")
+def seed_matches_files(results, seed):
+    """The seeded sizes were typed by hand in a seed file. Check them against
+    the files, so a placeholder redrawn at a new size cannot go unnoticed.
+
+    A rule, not a value: it holds for any content, so it runs over the
+    tests' seed AND the site's, whose sizes nothing else checks."""
+    print(f"  Every artwork in {seed.relative_to(PROJECT_ROOT).as_posix()}"
+          " has its file's size stored")
     with direct_connection() as connection:
         rows = connection.execute(
             "SELECT id, image, image_width, image_height FROM artworks").fetchall()
@@ -153,7 +157,11 @@ def main():
 
     reading_svg(results)
     print()
-    for case in (seed_matches_files, form_cannot_override, unreadable_file):
+    for seed in (TEST_SEED, SITE_SEED):
+        with temp_database(seed):
+            seed_matches_files(results, seed)
+        print()
+    for case in (form_cannot_override, unreadable_file):
         with temp_database():
             case(results)
         print()

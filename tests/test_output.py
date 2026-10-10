@@ -20,7 +20,7 @@ import sys
 from html.parser import HTMLParser
 
 from support import (PROJECT_ROOT, Results, buyer, create_admin, direct_connection,
-                     log_in, temp_database)
+                     get_page, log_in, temp_database)
 
 import app
 
@@ -221,7 +221,7 @@ def csp_compatible(results):
              "/admin/artworks/new", "/admin/artworks/1/edit",
              "/admin/artworks/1/delete"]
     for path in paths:
-        found = Inline(admin.get(path).get_data(as_text=True)).found
+        found = Inline(get_page(admin, path, results).get_data(as_text=True)).found
         results.check(f"{path}: inline code or style", sorted(set(found)), [])
     found = Inline(app.app.test_client().get("/admin/login").get_data(as_text=True)).found
     results.check("/admin/login: inline code or style", found, [])

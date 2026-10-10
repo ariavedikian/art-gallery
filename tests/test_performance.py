@@ -22,8 +22,8 @@ import sqlite3
 import sys
 from contextlib import contextmanager
 
-from support import (PROJECT_ROOT, Results, direct_connection, temp_database,
-                     temp_folder)
+from support import (PROJECT_ROOT, Results, direct_connection, get_page,
+                     temp_database, temp_folder)
 
 import app
 
@@ -127,7 +127,7 @@ def query_counts(results):
 
     def count(path):
         statements.clear()
-        client.get(path)
+        get_page(client, path, results)
         return len([s for s in statements if not s.startswith("PRAGMA")])
 
     client = app.app.test_client()
