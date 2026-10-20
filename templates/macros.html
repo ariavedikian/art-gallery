@@ -74,8 +74,8 @@
   heading over an empty list would claim something it does not show.
 
   A source's url is an outside link. It comes from seed.sql, never from a
-  visitor, and tests/test_content.py accepts only https://; the CSP would
-  refuse a javascript: link anyway.
+  visitor, and tests/test_content.py accepts only http:// and https://; the
+  CSP would refuse a javascript: link anyway.
 #}
 {% macro sources_list(sources) %}
   {% if sources %}

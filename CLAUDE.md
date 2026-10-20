@@ -99,7 +99,7 @@ styling, cluttered layouts.
   `tests/test_unknown_facts.py` blanks every optional fact and parses each
   page for "None", empty `<p>`/`<dd>`/`<dt>`, and stranded separators.
 - **Every fact is cited.** `sources` (a `ref` the seed uses to point at
-  it, the citation, an https `url` and the date it was `accessed`) and two
+  it, the citation, an http(s) `url` and the date it was `accessed`) and two
   junction tables, `artist_citations` and `artwork_citations`, one row per
   (subject, field, source), with an optional `locator` ("p. 112"). Citable
   fields are `ARTIST_FIELDS` / `ARTWORK_FIELDS` in app.py and the CHECK
@@ -109,9 +109,24 @@ styling, cluttered layouts.
   deleted. The artist and artwork pages end with a numbered Sources list
   (`sources_list` macro), one entry per source with the facts it supports.
   `tests/test_content.py` checks `database/seed.sql`: every non-NULL fact
-  cited, no placeholder text or picture, every source used, https and
-  dated, portraits 800x1000, its pages load and list their sources; and
-  that `tests/seed.sql` holds no real name.
+  cited, no placeholder text or picture, every source used, `http://` or
+  `https://` (nothing else may reach an href) and dated, portraits
+  800x1000, its pages load and list their sources; and that
+  `tests/seed.sql` holds no real name. It compares text with
+  `markupsafe.escape`, Jinja's own function: Jinja writes every `"` as
+  `&#34;`, and `html.escape(quote=False)` does not.
+- **How a fact earns its place** (Stage 21 Part 4). Authority records (the
+  BnF's) and institutions speaking of their own business (the Académie on
+  its member, a museum on its collection) come first; two independent
+  sources beat one; in a conflict, the source closest to the fact wins
+  (the museum that received a gift, over a news report of it). Dealer
+  listings, auction databases, Wikipedia and search summaries are never
+  sources: a search summary gave Carzou's birthplace as Paris, and the BnF
+  record it summarised says Aleppo. A fact is checked against the world as
+  well as its sources: "Arts et Lettres, 1953" fell because the order was
+  created in 1957. Candidates go to the owner in a numbered table; text is
+  written only from approved facts, sentence by sentence, and approved
+  again before it goes into the seed.
 - **The neutral picture says what is true.** `NO_IMAGE`
   (`placeholders/no-image.svg`, 800x1000, "Image not available") stands in
   wherever an image may not be shown (reproduction rights). Its alt text is
@@ -574,9 +589,13 @@ styling, cluttered layouts.
   old citation pointing at the new value: whether the admin should edit
   facts at all is a question for Part 5. Nor are the new fields or the
   sources in the API: its contract was left unchanged.
-- The site now shows real artists (names and dates only) beside
-  placeholder gallery text, hero and name (`GALLERY_NAME`, `HERO`, the
-  homepage paragraphs, the footer): Part 6. The header still fits one row
+- The site now shows real artists (names, dates, summaries, biographies)
+  beside placeholder gallery text, hero and name (`GALLERY_NAME`, `HERO`,
+  the homepage paragraphs, the footer): Part 6.
+- A biography is one `<p>` (Jansem's is 165 words). Paragraph breaks would
+  need the template to split `bio` on blank lines; not done.
+- Titles inside a biography (*Yeghern*, *Les Indes galantes*) are plain
+  text, not italic: the text is escaped, so it cannot carry markup. The header still fits one row
   at 64em with the real names (823px of ~976px, measured 2026-10-09); the
   wordmark is "Gallery Placeholder", so re-measure when it changes.
 - *Things placeholders hid:* portraits' 800x1000 is typed into
@@ -965,8 +984,16 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       disagrees with app.py). `test_images.py` now says when a seed has no
       works to check, instead of passing silently. In a browser: the header
       still fits one row at 64em, Sources render, no console errors.
-      **Part 4:** artist research: candidate facts with sources, the owner
-      approves, bios written from approved facts only.
+      **Part 4 (done):** artist research. 28 candidate facts from the BnF,
+      the Académie des beaux-arts, Paris Musées, the Musée Arménien de
+      France, the Armenian Genocide Museum-Institute, the Azumino Jansem
+      Museum and Armenpress; the owner approved them by number and the
+      wording sentence by sentence. Both artists now have a summary and a
+      biography (11 sources, 22 citations). Left out: Jansem's Arts et
+      Lettres (no reliable source; 1953 predates the order), his place of
+      death and exact birth village (sources disagree), Carzou's day of
+      birth (1 January, a likely stand-in). Sources may be `http://` (the
+      Azumino museum has no https).
       **Part 5:** the owner's works: photos transcribed, candidates with
       evidence, the owner confirms; prices and stock from the owner.
       **Part 6:** the gallery's own words: name, hero, homepage text, footer,

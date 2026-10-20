@@ -12,7 +12,8 @@ for any content, and this file checks them against the real thing:
 
 - every fact about an artist or a work is cited to a source
 - nothing in it is a placeholder, in text or in pictures
-- every source is used, and a web source is https with the date it was read
+- every source is used, and a web source is an http(s) address with the date
+  it was read
 - the portraits are the size the templates assume
 - the pages that show it load, list their sources, and describe the neutral
   picture honestly
@@ -26,7 +27,6 @@ used by the filters). Prices, stock and running order are the gallery's
 decisions, not facts about the work.
 """
 
-import html
 import re
 import sys
 from datetime import date
@@ -35,6 +35,10 @@ from support import (PROJECT_ROOT, SITE_SEED, TEST_SEED, Results, direct_connect
                      get_page, temp_database)
 
 import app
+# Jinja's own escaping function. It writes every " as &#34;, even in plain
+# text; Python's html.escape(quote=False) leaves it alone, and a citation
+# with quotes in it then looks missing from a page that shows it.
+from markupsafe import escape  # noqa: E402
 
 PLACEHOLDER_TEXT = re.compile(r"placeholder|artist one|artist two|artwork title", re.I)
 REAL_NAMES = ("Jansem", "Carzou")
@@ -93,7 +97,7 @@ def no_placeholders(results):
 
 
 def sources_complete(results):
-    print("  Every source is cited, and a web source is https and dated")
+    print("  Every source is cited, and a web source is a web address, dated")
     with direct_connection() as db:
         for source in db.execute("SELECT * FROM sources"):
             uses = db.execute(
@@ -103,8 +107,11 @@ def sources_complete(results):
             results.check(f"{source['ref']}: supports at least one fact", uses > 0, True)
             if source["url"] is None:
                 continue
-            results.check(f"{source['ref']}: https",
-                          source["url"].startswith("https://"), True)
+            # http:// is allowed for a site that has no https (the Azumino
+            # museum). What must never get through is anything else in an
+            # href: javascript:, data: and the like.
+            results.check(f"{source['ref']}: http(s)://",
+                          source["url"].startswith(("https://", "http://")), True)
             accessed = source["accessed"] or ""
             dated = (ISO_DATE.fullmatch(accessed) is not None
                      and date.fromisoformat(accessed) <= date.today())
@@ -154,7 +161,7 @@ def pages_show_it(results):
 
     for path, citations in expected.items():
         page = get_page(client, path, results).get_data(as_text=True)
-        missing = [c for c in citations if html.escape(c, quote=False) not in page]
+        missing = [c for c in citations if str(escape(c)) not in page]
         results.check(f"{path}: lists its {len(citations)} source(s)", missing, [])
         alts = no_image_alt(page)
         results.check(f"{path}: the neutral picture's alt says so",
