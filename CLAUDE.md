@@ -564,22 +564,16 @@ styling, cluttered layouts.
   then settle the open question: should the admin edit cited facts at
   all (e.g. make those fields read-only there, leaving price, stock,
   for-sale, featured, order and image to the admin)?
-- Part 5 still needs from the owner: the seven edition numbers read off
-  the prints (`edition` is NULL for these; ids from seed.sql):
-
-  | id | work | sheet says | photo's pencil reads |
-  |---|---|---|---|
-  | 3 | La dame | 50/50 | 5?/150 |
-  | 5 | La reine masquée | 64/150 | 117/150 |
-  | 6 | Rivage | Épreuve sur Japon 12/75 | 12/25 or 12/75 |
-  | 7 | Femme de profil avec bouquets | 172/173 (FR), 172/172 (EN) | 172/173 or 172/175 |
-  | 9 | Souvenir de Bretagne | Épreuve sur Japon 4/150 | 4/50 or 4/150 |
-  | 11 | Mère et enfants au parapluie | 1/15 | 5/15 or 7/15 |
-  | 17 | Femme au fichu noir de dos | no number | ?3/80 |
-
-  Also: prices and which works are for sale (all are price 0, not for
-  sale), and which are featured (none; the homepage says "No featured
-  works yet"). Price and stock are the owner's decisions, not cited.
+- Editions settled (2026-10-29, "editing" Part 1): the owner took six
+  from the description sheets (cited to the sheets alone), except La
+  reine masquée, 117/150 from the print (cited to the work; the sheet
+  says 64/150). A 6x zoom of the photo agrees with La dame's 50/50.
+  Femme au fichu noir de dos (id 17) stays NULL: no number on the sheet,
+  illegible in the photo. The seed's artworks comment records each choice.
+- Part 5 still needs from the owner: prices and which works are for sale
+  (all are price 0, not for sale), and which are featured (none; the
+  homepage says "No featured works yet"). Price and stock are the owner's
+  decisions, not cited.
 - The owner's local database is out of date (built before Part 2); they
   need `python init_db.py --reset` and `flask --app app create-admin`.
 - After Part 5: Part 6 (the gallery's own words, `/about`), Part 7 (images,

@@ -74,9 +74,9 @@ INSERT INTO sources (ref, citation, url, accessed) VALUES
     -- Printed description sheets in French, English and Armenian, kept
     -- with the works; photographed on 29 October 2026. They give title,
     -- year, medium and size. Some of their edition numbers disagree with
-    -- the pencil numbers on the prints (those editions are left NULL until
-    -- the owner reads the prints), and one English size is plainly wrong
-    -- (70 inches for 70 cm), so only the centimetre sizes are used.
+    -- the pencil numbers on the prints (see the artworks below), and one
+    -- English size is plainly wrong (70 inches for 70 cm), so only the
+    -- centimetre sizes are used.
     ('owner-description-sheets', 'Description sheets in the owner''s files (French, English, Armenian)',
      NULL, NULL);
 
@@ -158,11 +158,18 @@ INSERT INTO artist_citations (artist_id, field, source_id) VALUES
 -- with the English one in brackets. Ids are written out (works have no
 -- slug); display_order runs by artist, then date.
 --
--- Facts only, as cited below. Left NULL until the owner settles them:
---   * edition, where the sheet and the pencil number disagree or the pencil
---     is illegible in the photograph (La dame, La reine masquée, Rivage,
---     Femme de profil avec bouquets, Souvenir de Bretagne, Mère et enfants
---     au parapluie, Femme au fichu noir de dos)
+-- Facts only, as cited below. Editions the owner settled on 29 October
+-- 2026, where the sheet and the pencil number seemed to disagree or the
+-- pencil was hard to read in the photograph:
+--   * from the sheet, so cited to the sheets alone: La dame, Rivage,
+--     Femme de profil avec bouquets (the French sheet's 172/173; the
+--     English one says 172/172), Souvenir de Bretagne, Mère et enfants au
+--     parapluie (the pencil could be 1/15 or 7/15)
+--   * from the print, so cited to the work: La reine masquée, whose pencil
+--     reads 117/150 where the sheet says 64/150
+-- Left NULL until the owner settles them:
+--   * the edition of Femme au fichu noir de dos: the sheet gives none, and
+--     the pencil number is illegible in the photograph
 --   * year and size, where the sheet gives none.
 -- The dedication on Les soliloques du pauvre is left out at the owner's
 -- request.
@@ -192,7 +199,7 @@ VALUES
     (3, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
      'La dame (The lady)', '1965',
      'Etching enhanced with drypoint, in black', 'Print', NULL,
-     '46 × 63 cm', NULL,
+     '46 × 63 cm', '50/50',
      'Signed and dated in pencil lower right; numbered in pencil lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 30),
     (4, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
@@ -204,19 +211,19 @@ VALUES
     (5, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
      'La reine masquée (The masked queen)', '1970',
      'Color lithograph', 'Print', NULL,
-     '49 × 71 cm', NULL,
+     '49 × 71 cm', '117/150',
      'Signed and dated in pencil lower right; numbered in pencil lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 50),
     (6, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
      'Rivage (Shore)', '1972',
      'Color lithograph', 'Print', NULL,
-     '50 × 66 cm', NULL,
+     '50 × 66 cm', 'Épreuve sur Japon 12/75 (proof on Japan paper)',
      'Signed and dated in pencil lower right; inscribed Épreuve sur Japon and numbered lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 60),
     (7, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
      'Femme de profil avec bouquets (Profile of woman with flowers)', '1973',
      'Color lithograph', 'Print', NULL,
-     '52 × 67 cm', NULL,
+     '52 × 67 cm', '172/173',
      'Signed and dated in pencil lower right; numbered in pencil lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 70),
     (8, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
@@ -228,7 +235,7 @@ VALUES
     (9, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
      'Souvenir de Bretagne (Souvenir from Bretagne)', '1986',
      'Color lithograph', 'Print', NULL,
-     '52 × 69 cm', NULL,
+     '52 × 69 cm', 'Épreuve sur Japon 4/150 (proof on Japan paper)',
      'Signed and dated in pencil lower right; titled lower centre; inscribed Épreuve sur Japon and numbered lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 90),
     (10, (SELECT id FROM artists WHERE slug = 'jean-carzou'),
@@ -240,7 +247,7 @@ VALUES
     (11, (SELECT id FROM artists WHERE slug = 'jean-jansem'),
      'Mère et enfants au parapluie (Mother and daughters with umbrella)', 'c. 1960',
      'Lithograph, black and white', 'Print', NULL,
-     '24 × 16.5 cm', NULL,
+     '24 × 16.5 cm', '1/15',
      'Signed in pencil lower right; numbered in pencil lower left.',
      0, 0, 1, 0, 'placeholders/no-image.svg', 800, 1000, 110),
     (12, (SELECT id FROM artists WHERE slug = 'jean-jansem'),
@@ -317,6 +324,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (3, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (3, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (3, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (3, 'edition', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (3, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (4, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (4, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
@@ -333,6 +341,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (5, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (5, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (5, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (5, 'edition', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (5, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (6, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (6, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
@@ -340,6 +349,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (6, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (6, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (6, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (6, 'edition', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (6, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (7, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (7, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
@@ -347,6 +357,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (7, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (7, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (7, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (7, 'edition', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (7, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (8, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (8, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
@@ -365,6 +376,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (9, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (9, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (9, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (9, 'edition', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (9, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (10, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (10, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
@@ -382,6 +394,7 @@ INSERT INTO artwork_citations (artwork_id, field, source_id) VALUES
     (11, 'year', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (11, 'medium', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (11, 'dimensions', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
+    (11, 'edition', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (11, 'inscriptions', (SELECT id FROM sources WHERE ref = 'works-themselves')),
     (12, 'artist', (SELECT id FROM sources WHERE ref = 'owner-description-sheets')),
     (12, 'artist', (SELECT id FROM sources WHERE ref = 'works-themselves')),
