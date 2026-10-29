@@ -11,6 +11,16 @@
 
 {% set editing = artwork_id is not none %}
 
+{# A catalogued work's fact, shown rather than edited (Stage 21). Not an
+   input at all, so the browser sends nothing for it, and the server keeps
+   the stored value whatever a POST says (admin_artwork_update). #}
+{% macro cited_fact(label, value) %}
+  <div class="field">
+    <span class="field__label">{{ label }}</span>
+    <p>{% if value %}{{ value }}{% else %}<span class="muted">Not recorded</span>{% endif %}</p>
+  </div>
+{% endmacro %}
+
 {% block title %}{{ "Edit" if editing else "Add" }} artwork — Admin — {{ gallery_name }}{% endblock %}
 
 {% block head %}
@@ -61,6 +71,17 @@
         <fieldset class="admin-form__group">
           <legend>The work</legend>
 
+          {% if locked %}
+            <p class="field__hint muted small">This work's facts are cited to
+              sources, so they are shown here but not edited: each changes in
+              <code>database/seed.sql</code>, beside its citation.</p>
+          {% endif %}
+
+          {% if "artist_id" in locked %}
+            {% for artist in artists if artist.id | string == values.artist_id %}
+              {{ cited_fact("Artist", artist.name) }}
+            {% endfor %}
+          {% else %}
           <div class="field{% if errors.artist_id %} field--error{% endif %}">
             <label for="artist_id">Artist</label>
             <select id="artist_id" name="artist_id"
@@ -73,14 +94,27 @@
             </select>
             {% if errors.artist_id %}<p class="field__error small" id="error-artist_id">{{ errors.artist_id }}</p>{% endif %}
           </div>
+          {% endif %}
 
-          {{ form_field("title", "Title", values.title, errors, maxlength=200) }}
-          {{ form_field("year", "Date", values.year, errors,
-                        hint="Optional. Free text, since art dates can be approximate: c. 1955, 1962–63.",
-                        maxlength=40) }}
-          {{ form_field("medium", "Medium", values.medium, errors,
-                        hint="Optional. Leave blank if it is not verified.",
-                        maxlength=120) }}
+          {% if "title" in locked %}
+            {{ cited_fact("Title", values.title) }}
+          {% else %}
+            {{ form_field("title", "Title", values.title, errors, maxlength=200) }}
+          {% endif %}
+          {% if "year" in locked %}
+            {{ cited_fact("Date", values.year) }}
+          {% else %}
+            {{ form_field("year", "Date", values.year, errors,
+                          hint="Optional. Free text, since art dates can be approximate: c. 1955, 1962–63.",
+                          maxlength=40) }}
+          {% endif %}
+          {% if "medium" in locked %}
+            {{ cited_fact("Medium", values.medium) }}
+          {% else %}
+            {{ form_field("medium", "Medium", values.medium, errors,
+                          hint="Optional. Leave blank if it is not verified.",
+                          maxlength=120) }}
+          {% endif %}
 
           {# list= ties the field to the <datalist> below: the browser offers
              the categories already in use, which keeps "Painting" from
@@ -93,8 +127,12 @@
             {% for category in categories %}<option value="{{ category }}">{% endfor %}
           </datalist>
 
-          {{ form_field("description", "Description", values.description, errors,
-                        hint="Optional.", type="textarea") }}
+          {% if "description" in locked %}
+            {{ cited_fact("Description", values.description) }}
+          {% else %}
+            {{ form_field("description", "Description", values.description, errors,
+                          hint="Optional.", type="textarea") }}
+          {% endif %}
         </fieldset>
 
         <fieldset class="admin-form__group">

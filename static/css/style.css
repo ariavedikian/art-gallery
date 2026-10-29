@@ -923,7 +923,8 @@ a.feature__media:hover img { transform: scale(1.03); }
   max-width: 34rem;
 }
 
-.field label {
+.field label,
+.field__label {
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.14em;

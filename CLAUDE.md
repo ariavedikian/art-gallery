@@ -555,15 +555,21 @@ styling, cluttered layouts.
   the sheet may be wanted; the alt text then needs real descriptions
   (NO_IMAGE's derived alt no longer applies), and the ADAGP credit line
   "© Adagp, Paris, <year>" must accompany every reproduction.
-- (2) Two ways exist and they conflict. Cited facts live in
-  `database/seed.sql` (rebuild with `python init_db.py --reset`, which
-  empties admins and orders); the admin form (`/admin`) edits title,
-  date, medium, description, price, stock, featured, order, image -- but
-  an admin edit to a cited fact leaves its citation pointing at a value
-  the source never gave, and is wiped by the next `--reset`. Teach both,
-  then settle the open question: should the admin edit cited facts at
-  all (e.g. make those fields read-only there, leaving price, stock,
-  for-sale, featured, order and image to the admin)?
+- (2) Taught 2026-10-29 ("editing" Parts 1-3). The owner decided, taking
+  each recommendation:
+  * *A catalogued work's facts are locked in the admin.* A work with any
+    row in `artwork_citations` has all five form facts (artist, title,
+    date, medium, description) locked by `get_locked_fields()`, blank ones
+    included ("Not recorded"): per fact, the admin could still add an
+    uncited fact to a cited work. Locked facts are shown as text and never
+    read from the POST (the stored value replaces them, like image_width).
+    A work with no citations stays editable. test_cms.py `cited_facts`,
+    proved to fail both per fact and without the server-side override.
+  * *Add artwork stays*, though an admin-added work has no citations and
+    test_content.py (which builds from the seed) never sees it. New works
+    go through the seed by agreement; settle with deployment/migrations.
+  * *Prices, for-sale and featured live in the seed for now*: any seed
+    edit needs `--reset`, which wipes admin edits. Uncited (decisions).
 - Editions settled (2026-10-29, "editing" Part 1): the owner took six
   from the description sheets (cited to the sheets alone), except La
   reine masquée, 117/150 from the print (cited to the work; the sheet
@@ -574,8 +580,6 @@ styling, cluttered layouts.
   (all are price 0, not for sale), and which are featured (none; the
   homepage says "No featured works yet"). Price and stock are the owner's
   decisions, not cited.
-- The owner's local database is out of date (built before Part 2); they
-  need `python init_db.py --reset` and `flask --app app create-admin`.
 - After Part 5: Part 6 (the gallery's own words, `/about`), Part 7 (images,
   after permission), then Stage 22.
 
@@ -625,11 +629,10 @@ styling, cluttered layouts.
 **Stage 21, still open:**
 
 - `dimensions`, `edition` and `inscriptions` are not in the admin form, on
-  purpose: cited facts are edited in `database/seed.sql`. The form still
-  edits title, date, medium and description, and an edit there leaves the
-  old citation pointing at the new value: whether the admin should edit
-  facts at all is a question for Part 5. Nor are the new fields or the
-  sources in the API: its contract was left unchanged.
+  purpose: cited facts are edited in `database/seed.sql`. Since
+  2026-10-29 the form locks the other cited facts too (see "Where the
+  next session starts"). Nor are the new fields or the sources in the
+  API: its contract was left unchanged.
 - The site now shows real artists (names, dates, summaries, biographies)
   beside placeholder gallery text, hero and name (`GALLERY_NAME`, `HERO`,
   the homepage paragraphs, the footer): Part 6.

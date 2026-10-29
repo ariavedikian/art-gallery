@@ -149,6 +149,46 @@ def editing(results):
                   client.post("/admin/artworks/999/edit", data=edit).status_code, 404)
 
 
+def cited_facts(results):
+    """A catalogued work's facts change only in the seed, beside their
+    citations (Stage 21).
+
+    In tests/seed.sql, work 1's title is cited and nothing else of it is --
+    which is enough to lock all its facts, the uncited date included.
+    Work 2 has no citations at all.
+    """
+    print("  A catalogued work's facts are shown, not edited")
+    client = admin_client()
+
+    form = client.get("/admin/artworks/1/edit").get_data(as_text=True)
+    for name in app.FORM_FACTS.values():
+        results.check(f"work 1 has no {name} input", f'name="{name}"' in form, False)
+    results.check("...but its title is shown", "Artwork Title" in form, True)
+    other = client.get("/admin/artworks/2/edit").get_data(as_text=True)
+    results.check("an uncatalogued work's title has one", 'name="title"' in other, True)
+
+    row = artwork_row(1)
+    save = dict(GOOD_FORM, loaded_inventory=str(row["inventory_quantity"]),
+                inventory_quantity=str(row["inventory_quantity"]), image=row["image"])
+
+    # What a browser sends: none of the facts, since the form has no fields
+    # for them.
+    browser = {k: v for k, v in save.items() if k not in app.FORM_FACTS.values()}
+    results.check("a save from the form (no facts sent) works",
+                  client.post("/admin/artworks/1/edit", data=browser).status_code, 302)
+    results.check("...and keeps the title", artwork_row(1)["title"], "Artwork Title")
+
+    # A POST written by hand, changing the cited title, the uncited date
+    # and the price.
+    forged = dict(save, title="Retitled By Hand", year="1999", price="1,300")
+    client.post("/admin/artworks/1/edit", data=forged)
+    row = artwork_row(1)
+    results.check("a hand-written POST does not change the cited title",
+                  row["title"], "Artwork Title")
+    results.check("...nor the uncited date", row["year"], "2025")
+    results.check("...but the price changes", row["price_cents"], 130000)
+
+
 def lost_update(results):
     """A sale while the form is open must not be overwritten by the form."""
     print("  A sale while the edit form is open")
@@ -253,8 +293,8 @@ def shipping(results):
 def main():
     results = Results()
 
-    for case in (creating, money, validation, editing, lost_update, deleting,
-                 shipping):
+    for case in (creating, money, validation, editing, cited_facts, lost_update,
+                 deleting, shipping):
         with temp_database():
             case(results)
         print()

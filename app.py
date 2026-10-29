@@ -616,6 +616,27 @@ def get_artwork_sources(artwork_id):
     """, (artwork_id,)), ARTWORK_FIELDS)
 
 
+# The citable facts the admin form has a field for: citation field -> form
+# field. Dimensions, edition and inscriptions have no field at all.
+FORM_FACTS = {"artist": "artist_id", "title": "title", "year": "year",
+              "medium": "medium", "description": "description"}
+
+
+def get_locked_fields(artwork_id):
+    """The admin form fields locked for this work: all of FORM_FACTS's, or none.
+
+    A work with any citation is catalogued, and its facts change only in
+    database/seed.sql, beside their citations (Stage 21). Edited in the
+    admin, a cited fact would go on crediting its source with a value the
+    source never gave -- and a blank one, filled in, would be a fact on a
+    catalogued work with no source at all. So the lock is per work, not per
+    fact. A work with no citations (added in the admin) stays editable.
+    """
+    cited = query_db("SELECT 1 FROM artwork_citations WHERE artwork_id = ? LIMIT 1",
+                     (artwork_id,), one=True)
+    return set(FORM_FACTS.values()) if cited else set()
+
+
 # --- The cart ----------------------------------------------------------------
 # The cart is a session value, not a table. Nothing here writes to the
 # database, which is why Stage 11 needed no schema change at all.
@@ -2777,6 +2798,7 @@ def _artwork_form(template_values, errors, artwork=None, loaded_inventory=None,
         values=template_values, errors=errors,
         artwork_id=artwork["id"] if artwork else None,
         artwork=artwork, loaded_inventory=loaded_inventory,
+        locked=get_locked_fields(artwork["id"]) if artwork else set(),
         artists=get_artists(), categories=get_categories(),
         images=image_choices(current_image),
         accepted_types=", ".join(f"image/{kind.lower()}" for kind in UPLOAD_FORMATS),
@@ -2833,7 +2855,17 @@ def admin_artwork_update(artwork_id):
         abort(404)
 
     loaded = parse_whole_number(request.form.get("loaded_inventory", ""), 0, 10**9)
-    values, errors, record = validate_artwork(request.form, request.files,
+
+    # A catalogued work's facts are never read from the POST, the way
+    # image_width is not: the stored value goes in their place before
+    # anything is checked. The form shows them as text, so a browser sends
+    # nothing for them -- but a POST can be written by hand, and the server
+    # is the rule.
+    form = request.form.copy()
+    for name in get_locked_fields(artwork_id):
+        form[name] = "" if artwork[name] is None else str(artwork[name])
+
+    values, errors, record = validate_artwork(form, request.files,
                                               current_image=artwork["image"])
     if errors or loaded is None:
         return _artwork_form(values, errors, artwork, loaded, status=400)
