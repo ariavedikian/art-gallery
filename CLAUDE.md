@@ -536,7 +536,54 @@ styling, cluttered layouts.
   table on every parent DELETE. Queries per page are 1-5 and must not grow
   with the collection; `tests/test_performance.py` adds 30 works and checks.
 
-## Open items (as of 2026-10-09, Stage 21 Part 1)
+## Open items (as of 2026-10-29, Stage 21 Part 5; HEAD 87f36f6)
+
+**Where the next session starts** (read this first):
+
+- Stage 21 Parts 1-5 are committed and pushed (0776564, 18a5c06, 5b96bce,
+  3be57e1, 87f36f6). Part 5 is entered but not finished; see below.
+- The owner wants next: (1) to SEE the 19 works' photos on the site, and
+  (2) to learn how to edit each work's information.
+- (1) collides with a decision already made: real images go on the site
+  only after ADAGP's written authorisation (both artists' reproduction
+  rights; see Stage 21 decisions). Raise that first and present options
+  with a recommendation -- e.g. a local-only preview that is never
+  committed (photos stay in gitignored `/artworks/`, uploads in gitignored
+  `static/images/artworks/`) and never deployed, versus waiting for
+  permission (Part 7). The owner decides; do not quietly publish. The
+  photos are of framed works on white backgrounds (2100px+), so a crop to
+  the sheet may be wanted; the alt text then needs real descriptions
+  (NO_IMAGE's derived alt no longer applies), and the ADAGP credit line
+  "© Adagp, Paris, <year>" must accompany every reproduction.
+- (2) Two ways exist and they conflict. Cited facts live in
+  `database/seed.sql` (rebuild with `python init_db.py --reset`, which
+  empties admins and orders); the admin form (`/admin`) edits title,
+  date, medium, description, price, stock, featured, order, image -- but
+  an admin edit to a cited fact leaves its citation pointing at a value
+  the source never gave, and is wiped by the next `--reset`. Teach both,
+  then settle the open question: should the admin edit cited facts at
+  all (e.g. make those fields read-only there, leaving price, stock,
+  for-sale, featured, order and image to the admin)?
+- Part 5 still needs from the owner: the seven edition numbers read off
+  the prints (`edition` is NULL for these; ids from seed.sql):
+
+  | id | work | sheet says | photo's pencil reads |
+  |---|---|---|---|
+  | 3 | La dame | 50/50 | 5?/150 |
+  | 5 | La reine masquée | 64/150 | 117/150 |
+  | 6 | Rivage | Épreuve sur Japon 12/75 | 12/25 or 12/75 |
+  | 7 | Femme de profil avec bouquets | 172/173 (FR), 172/172 (EN) | 172/173 or 172/175 |
+  | 9 | Souvenir de Bretagne | Épreuve sur Japon 4/150 | 4/50 or 4/150 |
+  | 11 | Mère et enfants au parapluie | 1/15 | 5/15 or 7/15 |
+  | 17 | Femme au fichu noir de dos | no number | ?3/80 |
+
+  Also: prices and which works are for sale (all are price 0, not for
+  sale), and which are featured (none; the homepage says "No featured
+  works yet"). Price and stock are the owner's decisions, not cited.
+- The owner's local database is out of date (built before Part 2); they
+  need `python init_db.py --reset` and `flask --app app create-admin`.
+- After Part 5: Part 6 (the gallery's own words, `/about`), Part 7 (images,
+  after permission), then Stage 22.
 
 **Waiting on the owner:**
 
