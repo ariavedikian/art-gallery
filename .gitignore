@@ -8,6 +8,12 @@ __pycache__/
 # using the site, and backed up with it rather than committed.
 static/images/artworks/
 
+# The owner's photos of works they hold (Stage 21 Part 5): research material,
+# not site content. Both artists' works are in copyright, so the photos are
+# never committed or published. The leading / limits this to the top-level
+# folder; static/images/artworks/ is the uploads rule above.
+/artworks/
+
 # Editor/tooling scratch, not part of the project
 .claude/
 

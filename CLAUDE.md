@@ -994,8 +994,23 @@ Status: `[x]` done · `[~]` partly done · `[ ]` not started
       death and exact birth village (sources disagree), Carzou's day of
       birth (1 January, a likely stand-in). Sources may be `http://` (the
       Azumino museum has no https).
-      **Part 5:** the owner's works: photos transcribed, candidates with
-      evidence, the owner confirms; prices and stock from the owner.
+      **Part 5 (in progress):** the owner's works. 19 framed works on
+      paper (10 Carzou, 9 Jansem); the owner's photos are in `/artworks/`
+      (gitignored: research material, never published). The file names
+      are the owner's own labels, not evidence. Pencil inscriptions were
+      transcribed from enlarged crops, then matched to the owner's printed
+      description sheets (`artworks/title-info/`, FR/EN/HY). Two new kinds
+      of source, without URLs: `works-themselves` (what is written on each
+      sheet: wins any disagreement about its own inscriptions) and
+      `owner-description-sheets` (title, year, medium, size; cm only, as
+      one English size is plainly wrong). Titles are the French title with
+      the English in brackets. Seven editions are NULL where the sheet and
+      the pencil number disagree or the pencil is illegible; the
+      dedication on *Les soliloques du pauvre* is not recorded (owner's
+      wish). All 19 are not for sale (price 0), unfeatured, NO_IMAGE,
+      until the owner decides. Still to settle: the seven edition numbers,
+      prices and which works are for sale, which are featured, and whether
+      the admin should edit cited facts at all.
       **Part 6:** the gallery's own words: name, hero, homepage text, footer,
       a real `/about` page; re-measure the header if the name changes.
       **Part 7:** real images, only after ADAGP's written authorisation:
