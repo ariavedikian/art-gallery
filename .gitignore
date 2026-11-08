@@ -8,10 +8,10 @@ __pycache__/
 # using the site, and backed up with it rather than committed.
 static/images/artworks/
 
-# The owner's photos of works they hold (Stage 21 Part 5): research material,
-# not site content. Both artists' works are in copyright, so the photos are
-# never committed or published. The leading / limits this to the top-level
-# folder; static/images/artworks/ is the uploads rule above.
+# The owner's original photos and sheets (Stage 21 Part 5): research material.
+# What the site shows is the copies prepare_photo.py makes in
+# static/images/works/, which are committed. The leading / limits this to the
+# top-level folder; static/images/artworks/ is the uploads rule above.
 /artworks/
 
 # Editor/tooling scratch, not part of the project

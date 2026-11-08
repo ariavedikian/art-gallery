@@ -470,6 +470,9 @@ a:focus-visible,
    whatever the proportions of the artwork inside. */
 .mat--fixed img { aspect-ratio: 4 / 5; }
 
+/* The rights line beside a photograph of a work. */
+.credit { margin-top: var(--space-1); }
+
 /* --- 9. Feature: large alternating image + text block (artists) ------------- */
 
 .feature {

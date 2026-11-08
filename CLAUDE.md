@@ -544,17 +544,19 @@ styling, cluttered layouts.
   3be57e1, 87f36f6). Part 5 is entered but not finished; see below.
 - The owner wants next: (1) to SEE the 19 works' photos on the site, and
   (2) to learn how to edit each work's information.
-- (1) collides with a decision already made: real images go on the site
-  only after ADAGP's written authorisation (both artists' reproduction
-  rights; see Stage 21 decisions). Raise that first and present options
-  with a recommendation -- e.g. a local-only preview that is never
-  committed (photos stay in gitignored `/artworks/`, uploads in gitignored
-  `static/images/artworks/`) and never deployed, versus waiting for
-  permission (Part 7). The owner decides; do not quietly publish. The
-  photos are of framed works on white backgrounds (2100px+), so a crop to
-  the sheet may be wanted; the alt text then needs real descriptions
-  (NO_IMAGE's derived alt no longer applies), and the ADAGP credit line
-  "© Adagp, Paris, <year>" must accompany every reproduction.
+- (1) Done 2026-11-08, and it reverses a decision: offered a local-only
+  preview, waiting, or the real site, the owner chose the real site now,
+  ahead of ADAGP's written authorisation. `prepare_photo.py` makes the web
+  copies in tracked `static/images/works/`; the seed names them with real
+  alt text; `REPRODUCTION_CREDIT` ("© Adagp, Paris, 2026", the `credit`
+  filter) is printed beside every photo: cards, work page, Selected work,
+  cart, lightbox. `is_upload()` still means "the site may delete it";
+  `is_photograph()` covers works/ too. test_content.py
+  `works_shown_properly`, `admin_keeps_committed_photos`, each proved to
+  fail. All 19 are featured. Still shown framed, as photographed (crop not
+  done). **Work 18 keeps the neutral picture**: its photo shows the
+  dedication the owner asked to leave out; question put to the owner.
+  ADAGP's permission is still needed before the site goes public.
 - (2) Taught 2026-10-29 ("editing" Parts 1-3). The owner decided, taking
   each recommendation:
   * *A catalogued work's facts are locked in the admin.* A work with any
@@ -577,8 +579,7 @@ styling, cluttered layouts.
   Femme au fichu noir de dos (id 17) stays NULL: no number on the sheet,
   illegible in the photo. The seed's artworks comment records each choice.
 - Part 5 still needs from the owner: prices and which works are for sale
-  (all are price 0, not for sale), and which are featured (none; the
-  homepage says "No featured works yet"). Price and stock are the owner's
+  (all are price 0, not for sale). Price and stock are the owner's
   decisions, not cited.
 - After Part 5: Part 6 (the gallery's own words, `/about`), Part 7 (images,
   after permission), then Stage 22.
@@ -611,7 +612,9 @@ styling, cluttered layouts.
   artist and artwork pages. Facts are written in our own words from
   approved sources, never pasted; dealer listings and search summaries are
   not sources.
-- *Text now, images only after permission.* The ADAGP directory (checked
+- *Text now, images only after permission* (reversed by the owner for the
+  works' photos on 2026-11-08; see "Where the next session starts"; artist
+  portraits are unchanged). The ADAGP directory (checked
   2026-10-09) lists Jean Jansem (1920-2013) and Jean Carzou (1907-2000) and
   says ADAGP manages their reproduction and representation rights; every
   reproduction must carry "© Adagp, Paris, <year>". Owning a work does not

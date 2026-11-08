@@ -166,6 +166,17 @@
 
 
 {#
+  The rights line a photograph of a work must carry; nothing for a work
+  without one. The `credit` filter in app.py holds the rule. A figcaption
+  inside a work's <figure>; a card uses tag="p", so that every mat in a grid
+  keeps its shape whether or not the work has a photo.
+#}
+{% macro reproduction_credit(art, tag="figcaption") %}
+  {% if art | credit %}<{{ tag }} class="credit muted small">{{ art | credit }}</{{ tag }}>{% endif %}
+{% endmacro %}
+
+
+{#
   One artwork in a grid, used by artwork_grid above.
 
   show_artist works like a Python default argument. On an artist's own page
@@ -188,6 +199,7 @@
       data-description="{{ art.description }}"
       data-image="{{ url_for('static', filename='images/' ~ art.image) }}"
       data-srcset="{{ art | srcset }}"
+      data-credit="{{ art | credit }}"
       data-href="{{ url_for('artwork_page', artwork_id=art.id) }}">
     <figure class="mat mat--fixed">
       {# loading=none leaves the attribute out (xmlattr skips none): eager. #}
@@ -213,6 +225,7 @@
       {% if byline %}<p class="muted small">{{ byline }}</p>{% endif %}
       {% if art.medium %}<p class="muted small">{{ art.medium }}</p>{% endif %}
       {{ price_status(art) }}
+      {{ reproduction_credit(art, tag="p") }}
     </div>
   </li>
 {% endmacro %}

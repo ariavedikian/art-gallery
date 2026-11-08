@@ -31,8 +31,8 @@ import re
 import sys
 from datetime import date
 
-from support import (PROJECT_ROOT, SITE_SEED, TEST_SEED, Results, direct_connection,
-                     get_page, temp_database)
+from support import (PROJECT_ROOT, SITE_SEED, TEST_SEED, Results, create_admin,
+                     direct_connection, get_page, log_in, temp_database)
 
 import app
 # Jinja's own escaping function. It writes every " as &#34;, even in plain
@@ -168,6 +168,77 @@ def pages_show_it(results):
                       sorted(set(alts)), [app.NO_IMAGE_ALT] if alts else [])
 
 
+def main_figure(page):
+    """The work's own <figure> on its page, without the related works' cards."""
+    return re.search(r'<figure class="mat artwork-detail__figure">.*?</figure>',
+                     page, re.S).group(0)
+
+
+def works_shown_properly(results):
+    print("  Every photo of a work exists, is described, and is credited")
+    with direct_connection() as db:
+        works = db.execute("SELECT id, title, image, image_width, image_height, alt_text"
+                           " FROM artworks").fetchall()
+    photos = [work for work in works if app.is_photograph(work["image"])]
+    results.check("at least one work has a photo", bool(photos), True)
+    client = app.app.test_client()
+
+    for work in photos:
+        results.check(f"work {work['id']}: the size the seed says",
+                      app.image_size(app.image_file(work["image"])),
+                      (work["image_width"], work["image_height"]))
+        missing = [width for width in app.rendition_widths(work["image_width"])
+                   if not app.image_file(app.rendition_path(work["image"], width)).is_file()]
+        results.check(f"work {work['id']}: every smaller copy exists", missing, [])
+        results.check(f"work {work['id']}: alt text is written",
+                      bool(work["alt_text"]), True)
+        page = get_page(client, f"/artwork/{work['id']}", results).get_data(as_text=True)
+        results.check(f"work {work['id']}: its picture carries the credit",
+                      app.REPRODUCTION_CREDIT in main_figure(page), True)
+        results.check(f"work {work['id']}: its page describes it",
+                      str(escape(work["alt_text"])) in page, True)
+
+    # Each card has the credit twice: on the card, and for the lightbox.
+    printed = f">{app.REPRODUCTION_CREDIT}<"
+    page = get_page(client, "/gallery", results).get_data(as_text=True)
+    results.check("/gallery: a credit on each photo's card", page.count(printed), len(photos))
+    results.check("/gallery: and for its lightbox",
+                  page.count(f'data-credit="{app.REPRODUCTION_CREDIT}"'), len(photos))
+
+    # The homepage's first work is the large "Selected work"; the rest are cards.
+    page = get_page(client, "/", results).get_data(as_text=True)
+    results.check("/: a credit on each photo", page.count(printed), len(photos))
+    results.check("/: every work is on the homepage",
+                  [work["id"] for work in works if str(escape(work["title"])) not in page], [])
+
+    for work in works:
+        if work["image"] == app.NO_IMAGE:
+            page = get_page(client, f"/artwork/{work['id']}", results).get_data(as_text=True)
+            results.check(f"work {work['id']}: the neutral picture is not credited",
+                          app.REPRODUCTION_CREDIT in main_figure(page), False)
+
+
+def admin_keeps_committed_photos(results):
+    print("  A save in the admin keeps a committed photo, and its files")
+    create_admin()
+    client = app.app.test_client()
+    log_in(client)
+    with direct_connection() as db:
+        work = db.execute("SELECT * FROM artworks WHERE image LIKE 'works/%' LIMIT 1").fetchone()
+    data = {"category": work["category"], "price": "1200",
+            "inventory_quantity": str(work["inventory_quantity"]),
+            "loaded_inventory": str(work["inventory_quantity"]),
+            "image": work["image"], "display_order": str(work["display_order"])}
+    response = client.post(f"/admin/artworks/{work['id']}/edit", data=data)
+    results.check("the save goes through", response.status_code, 302)
+    with direct_connection() as db:
+        kept = db.execute("SELECT image, price_cents FROM artworks WHERE id = ?",
+                          (work["id"],)).fetchone()
+    results.check("the price saved", kept["price_cents"], 120000)
+    results.check("the photo is kept", kept["image"], work["image"])
+    results.check("its file is still there", app.image_file(work["image"]).is_file(), True)
+
+
 def field_lists_agree(results):
     print("  The facts a citation may name: app.py and schema.sql agree")
     with direct_connection() as db:
@@ -191,7 +262,8 @@ def main():
     results = Results()
     with temp_database(SITE_SEED):
         for case in (every_fact_cited, no_placeholders, sources_complete,
-                     portraits_fit_templates, pages_show_it, field_lists_agree):
+                     portraits_fit_templates, pages_show_it, works_shown_properly,
+                     admin_keeps_committed_photos, field_lists_agree):
             case(results)
             print()
     test_seed_stays_placeholder(results)

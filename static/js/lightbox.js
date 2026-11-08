@@ -41,6 +41,7 @@
     image: document.getElementById("lightbox-image"),
     title: document.getElementById("lightbox-title"),
     meta: document.getElementById("lightbox-meta"),
+    credit: document.getElementById("lightbox-credit"),
     description: document.getElementById("lightbox-description"),
     price: document.getElementById("lightbox-price"),
     link: document.getElementById("lightbox-link"),
@@ -75,6 +76,7 @@
         description: card.dataset.description,
         image: card.dataset.image,
         srcset: card.dataset.srcset,
+        credit: card.dataset.credit,
         href: card.dataset.href,
         price: card.querySelector(".price"),
         // Copied from the card's own <img>, for the same reason as the price:
@@ -112,6 +114,8 @@
     // separator -- the same rule as `| select | join` in the templates.
     view.meta.textContent = [work.artist, work.year].filter(Boolean).join(", ") +
       (work.medium ? " · " + work.medium : "");
+    view.credit.textContent = work.credit;
+    view.credit.hidden = !work.credit;
     view.description.textContent = work.description;
     view.description.hidden = !work.description;
     view.link.href = work.href;

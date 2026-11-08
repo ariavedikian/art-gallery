@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import artwork_grid, artwork_image, csrf_field, detail, price_status,
-                             sources_list %}
+                             reproduction_credit, sources_list %}
 
 {#
   One artwork, in detail. The route fetches a single row and passes it in as
@@ -30,6 +30,7 @@
           {# The only image on the page the visitor came to see, so it loads
              eagerly and at high priority. No lazy loading here. #}
           {{ artwork_image(artwork, "detail", fetchpriority="high") }}
+          {{ reproduction_credit(artwork) }}
         </figure>
 
         <div class="artwork-detail__body">

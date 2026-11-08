@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_image, csrf_field %}
+{% from "macros.html" import artwork_image, csrf_field, reproduction_credit %}
 
 {#
   The cart.
@@ -45,6 +45,7 @@
                 {# The first lines are on screen as the cart opens, so they
                    load at once; a long cart's later lines load lazily. #}
                 {{ artwork_image(art, "cart", loading="lazy" if loop.index > 3 else none) }}
+                {{ reproduction_credit(art) }}
               </figure>
 
               <div class="cart-line__body">

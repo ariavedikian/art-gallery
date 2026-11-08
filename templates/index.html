@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import artwork_grid, artwork_image, detail, price_status %}
+{% from "macros.html" import artwork_grid, artwork_image, detail, price_status, reproduction_credit %}
 
 {% block title %}{{ gallery_name }} — Placeholder Collection{% endblock %}
 
@@ -82,6 +82,7 @@
         <figure class="mat spotlight__figure">
           {# Same 3fr / 2fr columns as the artwork page, so the same sizes. #}
           {{ artwork_image(spotlight, "detail", loading="lazy") }}
+          {{ reproduction_credit(spotlight) }}
         </figure>
 
         <div class="spotlight__body">

@@ -71,6 +71,10 @@ NO_IMAGE = "placeholders/no-image.svg"
 NO_IMAGE_ALT = "Image not available"
 assert "'" not in NO_IMAGE + NO_IMAGE_ALT
 
+# The line ADAGP asks for beside every reproduction of these artists' works
+# (see the credit filter). The year is the year of publication.
+REPRODUCTION_CREDIT = "© Adagp, Paris, 2026"
+
 # A whole number from a form, a URL or the environment is ASCII digits and
 # nothing else. str.isdigit() is NOT this test: it is true for "²"
 # (superscript two), which int() then refuses with a crash, and for "٣",
@@ -1595,6 +1599,16 @@ def is_upload(stored):
     return stored.startswith("artworks/")
 
 
+def is_photograph(stored):
+    """True for a real photo: an upload, or a work's photo in the code ("works/...").
+
+    Not the same question as is_upload(), which means "this site made it and
+    may delete it". A works/ file is committed with the code, named in
+    database/seed.sql by prepare_photo.py, and nothing here ever removes it.
+    """
+    return is_upload(stored) or stored.startswith("works/")
+
+
 def rendition_widths(width):
     """The rendition widths made for an original this wide: only smaller ones."""
     return [w for w in RENDITION_WIDTHS if w < width]
@@ -1607,7 +1621,8 @@ def rendition_path(stored, width):
     fact -- the original and its width -- and which renditions exist follows
     from it and RENDITION_WIDTHS. Store facts, derive conclusions.
     """
-    return f"artworks/{Path(stored).stem}-{width}.webp"
+    folder, stem = Path(stored).parent.as_posix(), Path(stored).stem
+    return f"{folder}/{stem}-{width}.webp"
 
 
 def make_renditions(image, colour_profile):
@@ -2060,13 +2075,23 @@ def srcset(art):
     the largest rendition. A placeholder is an SVG, which is sharp at any
     size, so it gets no srcset at all.
     """
-    if not is_upload(art["image"]):
+    if not is_photograph(art["image"]):
         return ""
     candidates = [(rendition_path(art["image"], width), width)
                   for width in rendition_widths(art["image_width"])]
     candidates.append((art["image"], art["image_width"]))
     return ", ".join(f"{url_for('static', filename='images/' + path)} {width}w"
                      for path, width in candidates)
+
+
+@app.template_filter("credit")
+def credit(art):
+    """The rights line to print beside a work's image, or "" for no photo.
+
+    One rule, so a grid, a work's page, the cart and the lightbox cannot
+    disagree: wherever a real photograph of a work is shown, its credit is.
+    """
+    return REPRODUCTION_CREDIT if is_photograph(art["image"]) else ""
 
 
 @app.template_filter("usd")
